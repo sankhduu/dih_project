@@ -1,5 +1,5 @@
 import React from 'react';
-import { Scale, ShieldCheck, ExternalLink, Heart } from 'lucide-react';
+import { Scale } from 'lucide-react';
 
 export function Footer() {
   return (

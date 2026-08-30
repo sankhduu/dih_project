@@ -71,46 +71,31 @@ interface MetrologyStoreContextType {
 
 const MetrologyStoreContext = createContext<MetrologyStoreContextType | undefined>(undefined);
 
+function getInitialState<T>(key: string, defaultValue: T): T {
+  if (typeof window === 'undefined') return defaultValue;
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+}
+
 export function MetrologyStoreProvider({ children }: { children: React.ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<UserProfile>(MOCK_USERS[0]); // Default to Applicant Ramesh
-  const [instruments, setInstruments] = useState<Instrument[]>(MOCK_INSTRUMENTS);
-  const [applications, setApplications] = useState<Application[]>(MOCK_APPLICATIONS);
-  const [certificates, setCertificates] = useState<Certificate[]>(MOCK_CERTIFICATES);
-  const [deficiencyMemos, setDeficiencyMemos] = useState<DeficiencyMemo[]>(MOCK_DEFICIENCY_MEMOS);
-  const [jurisdictions, setJurisdictions] = useState<Jurisdiction[]>(MOCK_JURISDICTIONS);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(MOCK_AUDIT_LOGS);
+  const [currentUser, setCurrentUser] = useState<UserProfile>(() => getInitialState('eMaap_currentUser', MOCK_USERS[0]));
+  const [instruments, setInstruments] = useState<Instrument[]>(() => getInitialState('eMaap_instruments', MOCK_INSTRUMENTS));
+  const [applications, setApplications] = useState<Application[]>(() => getInitialState('eMaap_applications', MOCK_APPLICATIONS));
+  const [certificates, setCertificates] = useState<Certificate[]>(() => getInitialState('eMaap_certificates', MOCK_CERTIFICATES));
+  const [deficiencyMemos, setDeficiencyMemos] = useState<DeficiencyMemo[]>(() => getInitialState('eMaap_memos', MOCK_DEFICIENCY_MEMOS));
+  const [jurisdictions] = useState<Jurisdiction[]>(MOCK_JURISDICTIONS);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(() => getInitialState('eMaap_auditLogs', MOCK_AUDIT_LOGS));
   const [renewalAlerts, setRenewalAlerts] = useState<RenewalAlert[]>(MOCK_RENEWAL_ALERTS);
-  const [offlineDrafts, setOfflineDrafts] = useState<InspectionRecord[]>([]);
+  const [offlineDrafts, setOfflineDrafts] = useState<InspectionRecord[]>(() => getInitialState('eMaap_offlineDrafts', []));
   const [isOfflineMode, setIsOfflineMode] = useState<boolean>(false);
-  const [isLoaded, setIsLoaded] = useState<boolean>(false);
 
-  // Load from localStorage if available
+  // Save to localStorage on state changes
   useEffect(() => {
-    try {
-      const savedUser = localStorage.getItem('eMaap_currentUser');
-      const savedInst = localStorage.getItem('eMaap_instruments');
-      const savedApps = localStorage.getItem('eMaap_applications');
-      const savedCerts = localStorage.getItem('eMaap_certificates');
-      const savedMemos = localStorage.getItem('eMaap_memos');
-      const savedLogs = localStorage.getItem('eMaap_auditLogs');
-      const savedDrafts = localStorage.getItem('eMaap_offlineDrafts');
-
-      if (savedUser) setCurrentUser(JSON.parse(savedUser));
-      if (savedInst) setInstruments(JSON.parse(savedInst));
-      if (savedApps) setApplications(JSON.parse(savedApps));
-      if (savedCerts) setCertificates(JSON.parse(savedCerts));
-      if (savedMemos) setDeficiencyMemos(JSON.parse(savedMemos));
-      if (savedLogs) setAuditLogs(JSON.parse(savedLogs));
-      if (savedDrafts) setOfflineDrafts(JSON.parse(savedDrafts));
-    } catch (e) {
-      console.warn('LocalStorage error, using seed defaults', e);
-    }
-    setIsLoaded(true);
-  }, []);
-
-  // Save to localStorage when state updates
-  useEffect(() => {
-    if (!isLoaded) return;
+    if (typeof window === 'undefined') return;
     try {
       localStorage.setItem('eMaap_currentUser', JSON.stringify(currentUser));
       localStorage.setItem('eMaap_instruments', JSON.stringify(instruments));
@@ -122,7 +107,7 @@ export function MetrologyStoreProvider({ children }: { children: React.ReactNode
     } catch (e) {
       console.error('LocalStorage write failed:', e);
     }
-  }, [currentUser, instruments, applications, certificates, deficiencyMemos, auditLogs, offlineDrafts, isLoaded]);
+  }, [currentUser, instruments, applications, certificates, deficiencyMemos, auditLogs, offlineDrafts]);
 
   const switchRole = (role: UserRole) => {
     const targetUser = MOCK_USERS.find((u) => u.role === role) || MOCK_USERS[0];
@@ -256,11 +241,11 @@ export function MetrologyStoreProvider({ children }: { children: React.ReactNode
       })
     );
 
-    const app = applications.find((a) => a.id === applicationId);
-    if (app) {
+    const targetApp = applications.find((a) => a.id === applicationId);
+    if (targetApp) {
       setInstruments((prev) =>
         prev.map((inst) =>
-          inst.id === app.instrumentId ? { ...inst, status: 'SCHEDULED' } : inst
+          inst.id === targetApp.instrumentId ? { ...inst, status: 'SCHEDULED' } : inst
         )
       );
 
@@ -293,7 +278,6 @@ export function MetrologyStoreProvider({ children }: { children: React.ReactNode
       return { inspection: newInspection };
     }
 
-    const app = applications.find((a) => a.id === inspectionData.applicationId);
     const targetInst = instruments.find((i) => i.id === inspectionData.instrumentId);
 
     if (inspectionData.outcome === 'PASS') {
@@ -510,11 +494,12 @@ export function MetrologyStoreProvider({ children }: { children: React.ReactNode
     setApplications(MOCK_APPLICATIONS);
     setCertificates(MOCK_CERTIFICATES);
     setDeficiencyMemos(MOCK_DEFICIENCY_MEMOS);
-    setJurisdictions(MOCK_JURISDICTIONS);
     setAuditLogs(MOCK_AUDIT_LOGS);
     setRenewalAlerts(MOCK_RENEWAL_ALERTS);
     setOfflineDrafts([]);
-    localStorage.clear();
+    if (typeof window !== 'undefined') {
+      localStorage.clear();
+    }
   };
 
   return (

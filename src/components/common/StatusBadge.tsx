@@ -11,7 +11,15 @@ import {
 import { ApplicationStatus, InstrumentStatus } from '@/types/metrology';
 
 interface StatusBadgeProps {
-  status: ApplicationStatus | InstrumentStatus | 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'OPEN' | 'RECTIFIED';
+  status:
+    | ApplicationStatus
+    | InstrumentStatus
+    | 'ACTIVE'
+    | 'EXPIRED'
+    | 'REVOKED'
+    | 'SUPERSEDED'
+    | 'OPEN'
+    | 'RECTIFIED';
   size?: 'sm' | 'md' | 'lg';
 }
 
@@ -78,8 +86,10 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
 
     case 'REVOKED':
     case 'REJECTED':
+    case 'SUPERSEDED':
       colorClasses = 'bg-zinc-100 text-zinc-800 border-zinc-300';
       Icon = XCircle;
+      if (status === 'SUPERSEDED') label = 'Superseded';
       break;
   }
 

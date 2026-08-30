@@ -7,7 +7,6 @@ import {
   Jurisdiction,
   AuditLogEntry,
   RenewalAlert,
-  InspectionRecord,
 } from '@/types/metrology';
 
 export const MOCK_JURISDICTIONS: Jurisdiction[] = [

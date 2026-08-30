@@ -36,21 +36,27 @@ export function generateCertificateHash(params: {
 }
 
 /**
- * Generate QR code data URL (Base64 PNG) from certificate verification URL
+ * Generate QR code data URL (Base64 PNG) from certificate verification URL safely across Webpack environments
  */
 export async function generateQRCodeDataUrl(text: string): Promise<string> {
   try {
-    return await QRCode.toDataURL(text, {
-      width: 280,
-      margin: 1,
-      color: {
-        dark: '#002B49', // DoCA Government Blue
-        light: '#FFFFFF',
-      },
-      errorCorrectionLevel: 'H',
-    });
+    if (!text) return '';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const qr: any = QRCode;
+    const toDataURL = qr?.toDataURL || qr?.default?.toDataURL;
+    if (typeof toDataURL === 'function') {
+      return await toDataURL(text, {
+        width: 280,
+        margin: 1,
+        color: {
+          dark: '#002B49', // DoCA Government Blue
+          light: '#FFFFFF',
+        },
+        errorCorrectionLevel: 'H',
+      });
+    }
   } catch (err) {
-    console.error('Error generating QR code:', err);
-    return '';
+    console.error('Error generating QR code data URL:', err);
   }
+  return '';
 }

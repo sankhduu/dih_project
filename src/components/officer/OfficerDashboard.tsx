@@ -2,25 +2,18 @@
 
 import React, { useState } from 'react';
 import { useMetrologyStore } from '@/lib/store';
-import { Application, Certificate, DeficiencyMemo } from '@/types/metrology';
+import { Application, Certificate } from '@/types/metrology';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { FieldInspectionSheet } from './FieldInspectionSheet';
 import { OfficialCertificateView } from '@/components/certificates/OfficialCertificateView';
-import { OfficialDeficiencyMemoView } from '@/components/certificates/OfficialDeficiencyMemoView';
 import {
   ShieldCheck,
   Calendar,
-  Clock,
   MapPin,
   Scale,
-  CheckCircle2,
   FileBadge,
-  AlertTriangle,
   Play,
-  UserCheck,
-  Building,
   RefreshCw,
-  Search,
   Wifi,
   WifiOff,
 } from 'lucide-react';
@@ -44,8 +37,6 @@ export function OfficerDashboard() {
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split('T')[0]);
   const [scheduleSlot, setScheduleSlot] = useState('11:00 AM - 01:00 PM');
   const [viewingCert, setViewingCert] = useState<Certificate | null>(null);
-  const [viewingMemo, setViewingMemo] = useState<DeficiencyMemo | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
 
   // Filter assigned applications
   const officerApps = applications.filter(
@@ -289,7 +280,7 @@ export function OfficerDashboard() {
 
           <div className="divide-y divide-slate-100">
             {scheduledQueue.map((app) => (
-              <div key={app.id} className="p-6 hover:bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div key={app.id} className="p-6 hover:bg-slate-50 flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-bold text-slate-900">{app.applicationNumber}</span>

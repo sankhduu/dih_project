@@ -224,7 +224,7 @@ export interface AuditLogEntry {
   entityId: string;
   details: string;
   ipAddress: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface RenewalAlert {

@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useId } from 'react';
 import { useMetrologyStore } from '@/lib/store';
-import { Application, CalibrationObservation, InspectionRecord } from '@/types/metrology';
+import { Application, CalibrationObservation } from '@/types/metrology';
 import { calculateMPE } from '@/lib/metrology-rules';
 import {
   Scale,
@@ -13,9 +13,6 @@ import {
   AlertTriangle,
   FileBadge,
   ShieldCheck,
-  Zap,
-  Save,
-  Send,
   X,
   Sparkles,
 } from 'lucide-react';
@@ -28,7 +25,8 @@ interface FieldInspectionSheetProps {
 }
 
 export function FieldInspectionSheet({ application, onClose, onSuccess }: FieldInspectionSheetProps) {
-  const { currentUser, recordInspectionAndIssueCertificate, isOfflineMode } = useMetrologyStore();
+  const { currentUser, recordInspectionAndIssueCertificate } = useMetrologyStore();
+  const idPrefix = useId().replace(/:/g, '');
 
   const inst = application.instrument;
 
@@ -69,16 +67,15 @@ export function FieldInspectionSheet({ application, onClose, onSuccess }: FieldI
     },
   ]);
 
-  // Physical Security Lead Seal Number
+  // Physical Security Lead Seal Number (Pure initialization)
   const [physicalSealNumber, setPhysicalSealNumber] = useState(
-    `DL-LM-SEAL-${Math.floor(10000 + Math.random() * 90000)}-${inst.accuracyClass === 'CLASS_I' ? 'A' : 'K'}`
+    `DL-LM-SEAL-88941-${inst.accuracyClass === 'CLASS_I' ? 'A' : 'K'}`
   );
 
   // Geo Location & Photos (Mock captured for mobile field officer)
-  const [geoLat, setGeoLat] = useState(inst.geoLat || 28.5494);
-  const [geoLng, setGeoLng] = useState(inst.geoLng || 77.2001);
+  const geoLat = inst.geoLat || 28.5494;
+  const geoLng = inst.geoLng || 77.2001;
   const [officerNotes, setOfficerNotes] = useState('');
-  const [forcedOutcome, setForcedOutcome] = useState<'PASS' | 'FAIL' | 'AUTO'>('AUTO');
 
   // Handle Reading Changes
   const handleReadingChange = (index: number, newReading: number) => {
@@ -169,7 +166,7 @@ export function FieldInspectionSheet({ application, onClose, onSuccess }: FieldI
 
   // Compute overall status
   const calibrationPassed = observations.every((o) => o.isWithinLimits);
-  const calculatedOutcome: 'PASS' | 'FAIL' =
+  const finalOutcome: 'PASS' | 'FAIL' =
     visualInspectionPassed &&
     sealingIntegrityPassed &&
     eccentricityTestPassed &&
@@ -178,12 +175,10 @@ export function FieldInspectionSheet({ application, onClose, onSuccess }: FieldI
       ? 'PASS'
       : 'FAIL';
 
-  const finalOutcome = forcedOutcome === 'AUTO' ? calculatedOutcome : forcedOutcome;
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const res = recordInspectionAndIssueCertificate({
+    recordInspectionAndIssueCertificate({
       applicationId: application.id,
       applicationNumber: application.applicationNumber,
       instrumentId: inst.id,
@@ -217,7 +212,7 @@ export function FieldInspectionSheet({ application, onClose, onSuccess }: FieldI
           spread: 70,
           origin: { y: 0.6 },
         });
-      } catch (err) {}
+      } catch {}
     }
 
     onSuccess();

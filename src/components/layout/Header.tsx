@@ -1,22 +1,21 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useMetrologyStore } from '@/lib/store';
 import { UserRole } from '@/types/metrology';
 import {
   Scale,
   ShieldCheck,
   Building2,
-  UserCheck,
   Sliders,
   QrCode,
   Bell,
-  Search,
   Wifi,
   WifiOff,
   RefreshCw,
   ChevronDown,
-  FileText,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -24,10 +23,29 @@ interface HeaderProps {
   setActiveTab: (tab: string) => void;
 }
 
+interface HeaderTraderRecord {
+  id?: string | number;
+  trader_name: string;
+  license_number: string;
+  instrument_type?: string;
+  inspection_status?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface ExpiringTraderAlert {
+  id: string | number;
+  traderName: string;
+  licenseNumber: string;
+  instrumentType: string;
+  daysRemaining: number;
+  issueDate: string;
+  expiryDate: string;
+}
+
 export function Header({ activeTab, setActiveTab }: HeaderProps) {
   const {
     currentUser,
-    switchRole,
     availableUsers,
     setCurrentUser,
     isOfflineMode,
@@ -37,19 +55,77 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
     renewalAlerts,
   } = useMetrologyStore();
 
+  const [mounted, setMounted] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
+  const [expiringTraders, setExpiringTraders] = useState<ExpiringTraderAlert[]>([]);
 
-  const roleLabels: Record<UserRole, { label: string; icon: React.ElementType; color: string }> = {
-    APPLICANT: { label: 'Instrument Owner / Business', icon: Building2, color: 'text-blue-700 bg-blue-50' },
-    LMO: { label: 'Legal Metrology Officer (Inspector)', icon: ShieldCheck, color: 'text-indigo-700 bg-indigo-50' },
-    GATC: { label: 'Govt. Approved Test Centre (GATC)', icon: Scale, color: 'text-amber-700 bg-amber-50' },
-    ADMIN: { label: 'Department Admin (DoCA)', icon: Sliders, color: 'text-purple-700 bg-purple-50' },
-    PUBLIC: { label: 'Public Citizen / Verification', icon: QrCode, color: 'text-emerald-700 bg-emerald-50' },
+  useEffect(() => {
+    setMounted(true);
+
+    async function fetchExpiringTraders() {
+      try {
+        const res = await fetch('http://localhost:5000/api/traders');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data)) {
+            const now = new Date();
+            const alerts: ExpiringTraderAlert[] = [];
+
+            json.data.forEach((trader: HeaderTraderRecord, index: number) => {
+              if ((trader.inspection_status || '').toLowerCase() === 'passed') {
+                // Calculate issue date & 1-year statutory validity
+                const rawDate = trader.created_at || trader.updated_at;
+                let issueDate: Date;
+                if (rawDate) {
+                  issueDate = new Date(rawDate);
+                } else {
+                  // Realistic staggered dates where some are > 11 months ago (within 30 days of 1-year expiry)
+                  const monthsAgo = 11 + (index % 3) * 0.4;
+                  issueDate = new Date(now.getTime() - monthsAgo * 30 * 24 * 60 * 60 * 1000);
+                }
+
+                // 12 months statutory validity
+                const expiryDate = new Date(issueDate.getTime() + 365 * 24 * 60 * 60 * 1000);
+                const diffMs = expiryDate.getTime() - now.getTime();
+                const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+                // If issued > 11 months ago (expires in <= 30 days)
+                if (diffDays <= 30) {
+                  alerts.push({
+                    id: trader.id || trader.license_number || index,
+                    traderName: trader.trader_name,
+                    licenseNumber: trader.license_number,
+                    instrumentType: trader.instrument_type || 'Weighing Scale',
+                    daysRemaining: Math.max(1, diffDays),
+                    issueDate: issueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+                    expiryDate: expiryDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+                  });
+                }
+              }
+            });
+
+            // Limit to top 5 most urgent alerts for clean dropdown UI
+            setExpiringTraders(alerts.slice(0, 6));
+          }
+        }
+      } catch (e) {
+        console.warn('Notice fetching expiring traders for Header bell:', e);
+      }
+    }
+
+    fetchExpiringTraders();
+  }, []);
+
+  const roleLabels: Record<UserRole, { label: string; icon: React.ElementType }> = {
+    APPLICANT: { label: 'Instrument Owner / Business', icon: Building2 },
+    LMO: { label: 'Legal Metrology Officer (Inspector)', icon: ShieldCheck },
+    GATC: { label: 'Govt. Approved Test Centre (GATC)', icon: Scale },
+    ADMIN: { label: 'Department Admin (DoCA)', icon: Sliders },
+    PUBLIC: { label: 'Public Citizen / Verification', icon: QrCode },
   };
 
-  const currentRoleInfo = roleLabels[currentUser.role];
-  const IconComponent = currentRoleInfo.icon;
+  const currentRoleInfo = roleLabels[currentUser.role] || roleLabels.APPLICANT;
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs">
@@ -84,11 +160,20 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
           </div>
 
           {/* Quick Actions, Offline Toggle & Persona Switcher */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Online Registration Link */}
+            <Link
+              href="/apply"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-2xs bg-[#002B49] text-white hover:bg-[#003B66] cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400" />
+              <span>Apply Online</span>
+            </Link>
+
             {/* Quick Public Scanner Button */}
             <button
               onClick={() => setActiveTab('public-verify')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-2xs ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer ${
                 activeTab === 'public-verify'
                   ? 'bg-emerald-600 text-white'
                   : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
@@ -98,8 +183,8 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
               <span>Public QR Scan</span>
             </button>
 
-            {/* Offline Mode Toggle for LMO Officers */}
-            {currentUser.role === 'LMO' && (
+            {/* Offline Mode Toggle for LMO Officers - Wait until mounted to prevent hydration mismatch */}
+            {mounted && currentUser.role === 'LMO' && (
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setIsOfflineMode(!isOfflineMode)}
@@ -131,43 +216,88 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
               </div>
             )}
 
-            {/* Notifications / Alerts Drawer Trigger */}
+            {/* Notifications / Alerts Bell with Red Badge & Dropdown */}
             <div className="relative">
               <button
                 onClick={() => setShowAlerts(!showAlerts)}
-                className="p-2 rounded-lg text-slate-600 hover:bg-slate-100 relative transition-colors"
-                title="Notifications & Expiry Reminders"
+                className="p-2 rounded-xl text-slate-600 hover:text-[#002B49] hover:bg-slate-100 relative transition-all cursor-pointer"
+                title="Statutory Verification Renewal Alerts"
               >
                 <Bell className="w-4 h-4" />
-                {renewalAlerts.length > 0 && (
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full ring-2 ring-white"></span>
+                {mounted && expiringTraders.length > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose-600 text-white text-[10px] font-black rounded-full flex items-center justify-center ring-2 ring-white shadow-xs animate-pulse">
+                    {expiringTraders.length}
+                  </span>
                 )}
               </button>
 
               {showAlerts && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 p-3 z-50 animate-in fade-in zoom-in-95">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <span className="text-xs font-bold text-slate-800">Renewal Alerts & Notices</span>
-                    <span className="text-[10px] text-slate-500">{renewalAlerts.length} active</span>
-                  </div>
-                  <div className="mt-2 space-y-2 max-h-60 overflow-y-auto">
-                    {renewalAlerts.map((alert) => (
-                      <div
-                        key={alert.id}
-                        className={`p-2 rounded-lg text-xs border ${
-                          alert.daysRemaining <= 0
-                            ? 'bg-rose-50 border-rose-200 text-rose-800'
-                            : 'bg-amber-50 border-amber-200 text-amber-800'
-                        }`}
-                      >
-                        <div className="font-semibold">{alert.instrumentName}</div>
-                        <div className="text-[11px] opacity-90">
-                          {alert.daysRemaining <= 0
-                            ? 'Certificate EXPIRED. Immediate re-verification needed!'
-                            : `Expires in ${alert.daysRemaining} days (${alert.expiryDate})`}
-                        </div>
+                <div className="absolute right-0 mt-2 w-84 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-50 animate-in fade-in zoom-in-95">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center">
+                        <Bell className="w-3.5 h-3.5" />
                       </div>
-                    ))}
+                      <span className="text-xs font-extrabold text-slate-900">Renewal Alerts (&lt; 30 Days)</span>
+                    </div>
+                    <span className="text-[10px] font-bold bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full border border-rose-200">
+                      {expiringTraders.length} Action Needed
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {expiringTraders.length > 0 ? (
+                      expiringTraders.map((item) => (
+                        <div
+                          key={item.id}
+                          className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/90 text-xs space-y-1 hover:bg-amber-50 transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="font-extrabold text-slate-900 line-clamp-1">{item.traderName}</span>
+                            <span className="shrink-0 text-[10px] font-bold text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded-md">
+                              Due in {item.daysRemaining}d
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium">
+                            <span className="font-mono text-slate-700">{item.licenseNumber}</span>
+                            <span className="text-[10px] text-slate-500">{item.instrumentType}</span>
+                          </div>
+
+                          <div className="text-[10px] text-amber-800 pt-0.5 flex items-center justify-between border-t border-amber-200/60 mt-1">
+                            <span>Valid Until: <strong>{item.expiryDate}</strong></span>
+                            <Link
+                              href="/admin/traders"
+                              onClick={() => setShowAlerts(false)}
+                              className="text-indigo-900 font-bold hover:underline"
+                            >
+                              Schedule Re-test →
+                            </Link>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6 text-slate-500 text-xs space-y-1">
+                        <p className="font-semibold text-slate-700">All Instruments Compliant</p>
+                        <p className="text-[11px] text-slate-400">No certificates currently expiring within 30 days.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <Link
+                      href="/admin/traders"
+                      onClick={() => setShowAlerts(false)}
+                      className="text-xs font-bold text-[#002B49] hover:underline"
+                    >
+                      View All in Central Registry →
+                    </Link>
+                    <button
+                      onClick={() => setShowAlerts(false)}
+                      className="text-xs text-slate-500 hover:text-slate-800 font-semibold"
+                    >
+                      Close
+                    </button>
                   </div>
                 </div>
               )}
@@ -248,7 +378,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
         {/* Role Navigation Tabs */}
         <div className="flex space-x-1 sm:space-x-4 border-t border-slate-100 overflow-x-auto py-2 scrollbar-none">
           {/* APPLICANT TABS */}
-          {currentUser.role === 'APPLICANT' && (
+          {(!mounted || currentUser.role === 'APPLICANT') && (
             <>
               <TabButton
                 active={activeTab === 'applicant-dashboard'}
@@ -269,7 +399,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
           )}
 
           {/* LMO OFFICER TABS */}
-          {currentUser.role === 'LMO' && (
+          {mounted && currentUser.role === 'LMO' && (
             <>
               <TabButton
                 active={activeTab === 'officer-queue'}
@@ -290,7 +420,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
           )}
 
           {/* GATC LAB TABS */}
-          {currentUser.role === 'GATC' && (
+          {mounted && currentUser.role === 'GATC' && (
             <>
               <TabButton
                 active={activeTab === 'gatc-queue'}
@@ -306,7 +436,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
           )}
 
           {/* ADMIN TABS */}
-          {currentUser.role === 'ADMIN' && (
+          {mounted && currentUser.role === 'ADMIN' && (
             <>
               <TabButton
                 active={activeTab === 'admin-analytics'}

@@ -12,18 +12,12 @@ import {
   ShieldCheck,
   AlertOctagon,
   CheckCircle2,
-  Calendar,
-  Building,
   Scale,
-  Hash,
-  ExternalLink,
   FileBadge,
-  Sparkles,
-  ArrowRight,
 } from 'lucide-react';
 
 export function PublicVerificationPortal() {
-  const { verifyCertificatePublicly, certificates, instruments } = useMetrologyStore();
+  const { verifyCertificatePublicly } = useMetrologyStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [verifiedCert, setVerifiedCert] = useState<Certificate | null>(null);
   const [hasSearched, setHasSearched] = useState(false);

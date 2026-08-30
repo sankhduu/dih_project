@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useMetrologyStore } from '@/lib/store';
-import { Camera, QrCode, X, Sparkles, CheckCircle2, ShieldCheck, Zap } from 'lucide-react';
+import { Camera, QrCode, X, CheckCircle2, Zap } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface InteractiveScannerModalProps {
@@ -17,35 +17,24 @@ export function InteractiveScannerModal({
   onScanResult,
 }: InteractiveScannerModalProps) {
   const { certificates } = useMetrologyStore();
-  const [scanning, setScanning] = useState(false);
   const [scannedCert, setScannedCert] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (isOpen) {
-      setScanning(true);
-      setScannedCert(null);
-    }
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleSimulateScan = (certNumber: string) => {
-    setScanning(true);
+    setScannedCert(certNumber);
+    try {
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.6 },
+      });
+    } catch {}
     setTimeout(() => {
-      setScannedCert(certNumber);
-      setScanning(false);
-      try {
-        confetti({
-          particleCount: 50,
-          spread: 60,
-          origin: { y: 0.6 },
-        });
-      } catch (e) {}
-      setTimeout(() => {
-        onScanResult(certNumber);
-        onClose();
-      }, 900);
-    }, 600);
+      onScanResult(certNumber);
+      setScannedCert(null);
+      onClose();
+    }, 900);
   };
 
   return (
