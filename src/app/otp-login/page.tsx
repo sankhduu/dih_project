@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase-client';
+import { supabase, getRedirectPathForRole, fetchUserProfile } from '@/lib/supabase-client';
 import { useMetrologyStore } from '@/lib/store';
 import { UserRole } from '@/types/metrology';
 import {
@@ -95,19 +95,12 @@ export default function OtpLoginPage() {
       let role: UserRole = (userMeta.role as UserRole) || 'APPLICANT';
       let fullName = userMeta.full_name || email.split('@')[0];
 
-      try {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user?.id)
-          .maybeSingle();
-
+      if (user?.id) {
+        const profile = await fetchUserProfile(user.id);
         if (profile) {
           if (profile.role) role = profile.role as UserRole;
           if (profile.full_name) fullName = profile.full_name;
         }
-      } catch (pErr) {
-        console.warn('Profile fetch notice:', pErr);
       }
 
       setCurrentUser({
@@ -124,7 +117,8 @@ export default function OtpLoginPage() {
         pinCode: '110001',
       });
 
-      router.push('/');
+      const targetPath = getRedirectPathForRole(role);
+      router.push(targetPath);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Invalid or expired OTP token. Please try again.';
       setErrorMsg(msg);

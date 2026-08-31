@@ -19,7 +19,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
-export type UserProfileRole = 'APPLICANT' | 'LMO' | 'GATC' | 'ADMIN';
+export type UserProfileRole = 'APPLICANT' | 'LMO' | 'GATC' | 'ADMIN' | 'Trader' | 'LMO Officer';
 
 export interface ProfileRecord {
   id: string; // Auth UUID
@@ -28,6 +28,60 @@ export interface ProfileRecord {
   role: UserProfileRole | string;
   email?: string;
   created_at?: string;
+}
+
+/**
+ * Maps a user role string to the required target redirect path
+ * - 'LMO Officer' / 'LMO' / 'ADMIN' -> /admin/traders
+ * - 'Trader' / 'APPLICANT' -> /trader/dashboard
+ * - 'GATC' -> /gatc/dashboard
+ */
+export function getRedirectPathForRole(role?: string): string {
+  if (!role) return '/trader/dashboard';
+  const normalized = role.trim().toUpperCase();
+
+  if (
+    normalized === 'LMO' ||
+    normalized === 'LMO OFFICER' ||
+    normalized.includes('OFFICER') ||
+    normalized === 'ADMIN'
+  ) {
+    return '/admin/traders';
+  }
+
+  if (normalized === 'GATC' || normalized.includes('GATC')) {
+    return '/gatc/dashboard';
+  }
+
+  if (
+    normalized === 'TRADER' ||
+    normalized === 'APPLICANT' ||
+    normalized.includes('TRADER')
+  ) {
+    return '/trader/dashboard';
+  }
+
+  return '/trader/dashboard';
+}
+
+/**
+ * Fetches the user profile record from the Supabase 'profiles' table by Auth UUID.
+ */
+export async function fetchUserProfile(userId: string): Promise<ProfileRecord | null> {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!error && data) {
+      return data as ProfileRecord;
+    }
+  } catch (err) {
+    console.warn('Error fetching user profile:', err);
+  }
+  return null;
 }
 
 /**

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { supabase, syncUserProfileToSupabase } from '@/lib/supabase-client';
+import { supabase, syncUserProfileToSupabase, getRedirectPathForRole } from '@/lib/supabase-client';
 import { useMetrologyStore } from '@/lib/store';
 import { UserRole } from '@/types/metrology';
 import {
@@ -379,10 +379,13 @@ export default function SignupPage() {
             )}
 
             <button
-              onClick={() => router.push('/')}
+              onClick={() => {
+                const targetPath = getRedirectPathForRole(successData.role);
+                router.push(targetPath);
+              }}
               className="w-full py-3 bg-[#002B49] hover:bg-[#003B66] text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
             >
-              Continue to Portal Dashboard →
+              Continue to {successData.role === 'LMO' ? 'Officer Queue' : successData.role === 'GATC' ? 'GATC Dashboard' : 'Trader Dashboard'} →
             </button>
           </div>
         </div>

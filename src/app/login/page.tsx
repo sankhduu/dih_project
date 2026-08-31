@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase-client';
+import { supabase, getRedirectPathForRole, fetchUserProfile } from '@/lib/supabase-client';
 import { useMetrologyStore } from '@/lib/store';
 import { UserRole } from '@/types/metrology';
 import {
@@ -54,23 +54,16 @@ export default function LoginPage() {
       const user = data.user;
       const userMeta = user?.user_metadata || {};
 
-      // 2. Fetch profile role if available from Supabase profiles table
+      // 2. Fetch profile role from Supabase profiles table
       let role: UserRole = (userMeta.role as UserRole) || 'APPLICANT';
       let fullName = userMeta.full_name || email.split('@')[0];
 
-      try {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user?.id)
-          .maybeSingle();
-
+      if (user?.id) {
+        const profile = await fetchUserProfile(user.id);
         if (profile) {
           if (profile.role) role = profile.role as UserRole;
           if (profile.full_name) fullName = profile.full_name;
         }
-      } catch (pErr) {
-        console.warn('Profile fetch notice:', pErr);
       }
 
       // 3. Set store current user
@@ -88,7 +81,9 @@ export default function LoginPage() {
         pinCode: '110001',
       });
 
-      router.push('/');
+      // 4. Automatically redirect according to statutory role
+      const targetPath = getRedirectPathForRole(role);
+      router.push(targetPath);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Invalid credentials. Please try again.';
       setErrorMsg(msg);
