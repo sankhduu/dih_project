@@ -369,6 +369,32 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                       );
                     })}
                   </div>
+                  <div className="p-2 bg-slate-50 border-t border-slate-100 flex flex-col gap-1 text-xs">
+                    <Link
+                      href="/login"
+                      onClick={() => setShowRoleMenu(false)}
+                      className="px-2.5 py-1.5 rounded-lg text-[#002B49] font-bold hover:bg-white flex items-center justify-between transition-colors"
+                    >
+                      <span>🔐 Supabase Sign In</span>
+                      <span className="text-[10px] text-slate-400">Password / Auth</span>
+                    </Link>
+                    <Link
+                      href="/signup"
+                      onClick={() => setShowRoleMenu(false)}
+                      className="px-2.5 py-1.5 rounded-lg text-emerald-700 font-bold hover:bg-white flex items-center justify-between transition-colors"
+                    >
+                      <span>📝 Register Account</span>
+                      <span className="text-[10px] text-emerald-600">Aadhaar Verified</span>
+                    </Link>
+                    <Link
+                      href="/otp-login"
+                      onClick={() => setShowRoleMenu(false)}
+                      className="px-2.5 py-1.5 rounded-lg text-indigo-700 font-semibold hover:bg-white flex items-center justify-between transition-colors"
+                    >
+                      <span>✨ Passwordless OTP</span>
+                      <span className="text-[10px] text-indigo-500">Magic Link</span>
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>
