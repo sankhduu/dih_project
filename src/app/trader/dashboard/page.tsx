@@ -105,7 +105,7 @@ export default function TraderDashboardPage() {
               <Clock className="w-4 h-4 text-amber-600" />
             </div>
             <div className="mt-2 text-2xl font-black text-amber-700">
-              {applications.filter((a) => a.status === 'SUBMITTED' || a.status === 'UNDER_REVIEW').length || 1}
+              {applications.filter((a) => a.status === 'SUBMITTED' || a.status === 'ASSIGNED' || a.status === 'SCHEDULED').length || 1}
             </div>
             <div className="text-[11px] text-amber-600 font-semibold mt-0.5">Assigned to State LMO</div>
           </div>
