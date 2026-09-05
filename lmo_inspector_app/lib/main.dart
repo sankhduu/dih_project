@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:camera/camera.dart';
 import 'services/offline_sync_service.dart';
-import 'screens/home_screen.dart';
+import 'screens/login_screen.dart';
 
 List<CameraDescription> appCameras = [];
 
@@ -63,7 +63,7 @@ class LMOInspectorApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-      home: const HomeScreen(),
+      home: const LoginScreen(),
     );
   }
 }
