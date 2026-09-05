@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'inspection_screen.dart';
 import 'login_screen.dart';
@@ -33,6 +36,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _fetchTraders();
+    // Auto-Sync on Dashboard: Check and sync cached offline approvals when loaded
+    _checkAndSyncOfflineApprovals();
+  }
+
+  /// Background check on dashboard load:
+  /// If online AND there are cached approvals in SharedPreferences,
+  /// loop through them, push updates to Supabase, clear local cache, and notify officer.
+  Future<void> _checkAndSyncOfflineApprovals() async {
+    try {
+      final List<ConnectivityResult> connectivity = await Connectivity().checkConnectivity();
+      final bool isConnected = connectivity.any((r) => r != ConnectivityResult.none);
+      if (!isConnected) return;
+
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final List<String>? offlineQueue = prefs.getStringList('offline_pending_approvals');
+
+      if (offlineQueue != null && offlineQueue.isNotEmpty) {
+        debugPrint('🔄 Found ${offlineQueue.length} offline approvals to sync to Supabase...');
+        final supabase = Supabase.instance.client;
+        int syncedCount = 0;
+
+        for (final raw in List<String>.from(offlineQueue)) {
+          try {
+            final Map<String, dynamic> item = jsonDecode(raw);
+            final String traderId = item['id'].toString();
+
+            await supabase.from('traders_list').update({
+              'status': 'Approved',
+              'latitude': item['latitude'],
+              'longitude': item['longitude'],
+              'updated_at': DateTime.now().toIso8601String(),
+            }).eq('id', traderId);
+
+            syncedCount++;
+          } catch (e) {
+            debugPrint('Error syncing single offline trader: $e');
+          }
+        }
+
+        // Clear local cache once pushed
+        await prefs.remove('offline_pending_approvals');
+        debugPrint('🧹 Local offline sync cache cleared.');
+
+        if (mounted && syncedCount > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.cloud_done, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text('Offline data synced successfully'),
+                ],
+              ),
+              backgroundColor: emeraldGreen,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          _fetchTraders();
+        }
+      }
+    } catch (e) {
+      debugPrint('Offline auto-sync check error: $e');
+    }
   }
 
   /// Query Supabase traders_list table with required filters:
@@ -56,6 +122,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       final List<Map<String, dynamic>> fetched = List<Map<String, dynamic>>.from(response);
 
+      // Filter out any traders that were approved offline and waiting in local queue
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final List<String>? offlineQueue = prefs.getStringList('offline_pending_approvals');
+      if (offlineQueue != null && offlineQueue.isNotEmpty) {
+        final Set<String> offlineApprovedIds = offlineQueue.map((raw) {
+          try {
+            return (jsonDecode(raw)['id'] ?? '').toString();
+          } catch (_) {
+            return '';
+          }
+        }).toSet();
+        fetched.removeWhere((item) => offlineApprovedIds.contains(item['id'].toString()));
+      }
+
       if (mounted) {
         setState(() {
           _traders = fetched;
@@ -68,6 +148,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // If database query fails (e.g. table not created yet or offline),
       // provide realistic district-matched fallback data so hackathon demo never fails!
       final fallbackData = _getDistrictFallbackTraders(widget.district);
+
+      // Also filter out offline-approved shops from fallback data
+      try {
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        final List<String>? offlineQueue = prefs.getStringList('offline_pending_approvals');
+        if (offlineQueue != null && offlineQueue.isNotEmpty) {
+          final Set<String> offlineApprovedIds = offlineQueue.map((raw) {
+            try {
+              return (jsonDecode(raw)['id'] ?? '').toString();
+            } catch (_) {
+              return '';
+            }
+          }).toSet();
+          fallbackData.removeWhere((item) => offlineApprovedIds.contains(item['id'].toString()));
+        }
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _traders = fallbackData;
@@ -238,6 +335,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _traders.removeWhere((item) => item['id'] == trader['id']);
       });
       _fetchTraders();
+      _checkAndSyncOfflineApprovals();
     }
   }
 
@@ -464,7 +562,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       )
                     : RefreshIndicator(
-                        onRefresh: _fetchTraders,
+                        onRefresh: () async {
+                          await _checkAndSyncOfflineApprovals();
+                          await _fetchTraders();
+                        },
                         color: primaryNavy,
                         child: ListView.separated(
                           padding: const EdgeInsets.all(16),
