@@ -1,7 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { supabase, normalizeUserRole } from '@/lib/supabase-client';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { useMetrologyStore } from '@/lib/store';
@@ -19,14 +21,92 @@ import {
   FileBadge,
   User,
   CreditCard,
+  Mail,
+  Lock,
+  FileText,
+  QrCode,
 } from 'lucide-react';
 
 export default function TraderDashboardPage() {
-  const { currentUser, instruments, applications, certificates } = useMetrologyStore();
+  const router = useRouter();
+  const { currentUser, instruments, applications, certificates, deficiencyMemos } = useMetrologyStore();
+  const [authorized, setAuthorized] = useState(false);
+  const [sessionEmail, setSessionEmail] = useState<string>('');
+
+  // 1. Client-Side Route Protection Guard
+  useEffect(() => {
+    async function checkTraderAuth() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const storedUser = typeof window !== 'undefined' ? localStorage.getItem('eMaap_currentUser') : null;
+
+        // If neither Supabase session nor a local stored user exists, redirect to login
+        if (!session && !storedUser) {
+          router.push('/login');
+          return;
+        }
+
+        let effectiveRole = currentUser.role;
+        let effectiveEmail = currentUser.email || '';
+
+        if (session?.user) {
+          effectiveEmail = session.user.email || effectiveEmail;
+          const metaRole = session.user.user_metadata?.role;
+          if (metaRole) {
+            effectiveRole = normalizeUserRole(metaRole).storeRole;
+          }
+        } else if (storedUser) {
+          try {
+            const parsed = JSON.parse(storedUser);
+            if (parsed?.role) {
+              effectiveRole = normalizeUserRole(parsed.role).storeRole;
+            }
+            if (parsed?.email) {
+              effectiveEmail = parsed.email;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        setSessionEmail(effectiveEmail);
+
+        // If user is NOT a Trader / Applicant, kick them to login
+        if (effectiveRole !== 'APPLICANT') {
+          router.push('/login');
+          return;
+        }
+
+        setAuthorized(true);
+      } catch (err) {
+        console.warn('Trader route guard error:', err);
+        router.push('/login');
+      }
+    }
+
+    checkTraderAuth();
+  }, [router, currentUser.role, currentUser.email]);
+
+  if (!authorized) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-sans text-slate-900">
+        <div className="p-8 max-w-sm w-full bg-white rounded-3xl border border-slate-200 shadow-xl text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto animate-pulse">
+            <Lock className="w-6 h-6" />
+          </div>
+          <h3 className="font-extrabold text-slate-900 text-base">Securing Trader Portal</h3>
+          <p className="text-xs text-slate-500">Validating your Trader credentials &amp; session permissions...</p>
+        </div>
+      </div>
+    );
+  }
 
   const userInstruments = instruments.filter(
     (inst) => inst.ownerName === currentUser.fullName || currentUser.role === 'APPLICANT'
   );
+
+  const displayEmail = sessionEmail || currentUser.email || 'trader@demo.com';
+  const displayName = currentUser.fullName || 'Ramesh Kumar (Proprietor)';
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-900">
@@ -46,20 +126,25 @@ export default function TraderDashboardPage() {
                 <span>Trader / Commercial Enterprise Portal</span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                Welcome, {currentUser.fullName || 'Proprietor'}
+                Welcome, {displayName}
               </h1>
               <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
                 <span className="flex items-center gap-1">
-                  <Building2 className="w-3.5 h-3.5 text-amber-400" />
-                  <span>{currentUser.businessName || 'Apex Commercial Enterprise'}</span>
+                  <Mail className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="font-mono text-amber-200">{displayEmail}</span>
+                </span>
+                <span>•</span>
+                <span className="flex items-center gap-1">
+                  <Building2 className="w-3.5 h-3.5 text-slate-300" />
+                  <span>{currentUser.businessName || 'Apex Supermarket & Grocery Store'}</span>
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1">
                   <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Aadhaar UIDAI Verified</span>
+                  <span>UIDAI Aadhaar Verified</span>
                 </span>
                 <span>•</span>
-                <span>{currentUser.district || 'South Delhi'}, {currentUser.state || 'Delhi NCR'}</span>
+                <span>{currentUser.district || 'South Delhi'}, {currentUser.state || 'Delhi (NCT)'}</span>
               </div>
             </div>
 
@@ -79,13 +164,13 @@ export default function TraderDashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
             <div className="text-slate-500 text-xs font-semibold flex items-center justify-between">
-              <span>Registered Instruments</span>
+              <span>My Registered Scales</span>
               <Scale className="w-4 h-4 text-blue-600" />
             </div>
             <div className="mt-2 text-2xl font-black text-slate-900">
               {userInstruments.length || 3}
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Commercial Weights & Measures</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">Commercial Weights &amp; Measures</div>
           </div>
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
@@ -101,18 +186,18 @@ export default function TraderDashboardPage() {
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
             <div className="text-slate-500 text-xs font-semibold flex items-center justify-between">
-              <span>Pending Inspections</span>
+              <span>Verification In-Progress</span>
               <Clock className="w-4 h-4 text-amber-600" />
             </div>
             <div className="mt-2 text-2xl font-black text-amber-700">
               {applications.filter((a) => a.status === 'SUBMITTED' || a.status === 'ASSIGNED' || a.status === 'SCHEDULED').length || 1}
             </div>
-            <div className="text-[11px] text-amber-600 font-semibold mt-0.5">Assigned to State LMO</div>
+            <div className="text-[11px] text-amber-600 font-semibold mt-0.5">Assigned to Statutory Officer</div>
           </div>
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
             <div className="text-slate-500 text-xs font-semibold flex items-center justify-between">
-              <span>Compliance Rate</span>
+              <span>Statutory Compliance</span>
               <ShieldCheck className="w-4 h-4 text-indigo-600" />
             </div>
             <div className="mt-2 text-2xl font-black text-indigo-900">100%</div>
@@ -120,7 +205,7 @@ export default function TraderDashboardPage() {
           </div>
         </div>
 
-        {/* Quick Action Navigation Panels */}
+        {/* Quick Action Navigation Panels (Trader-Only) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Link
             href="/apply"
@@ -131,10 +216,10 @@ export default function TraderDashboardPage() {
             </div>
             <div>
               <h3 className="font-extrabold text-slate-900 text-base group-hover:text-blue-700 transition-colors">
-                Register New Weighing Instrument
+                Register New Weighing Scale
               </h3>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Submit an online verification application for newly purchased scales or annual re-verification.
+                Submit an online application for newly purchased scales or annual re-verification stamping.
               </p>
             </div>
             <div className="text-xs font-bold text-blue-700 flex items-center gap-1">
@@ -144,7 +229,7 @@ export default function TraderDashboardPage() {
           </Link>
 
           <Link
-            href="/admin/traders"
+            href="/apply"
             className="p-6 rounded-3xl bg-white border border-slate-200 shadow-xs hover:shadow-md transition-all group flex flex-col justify-between space-y-4"
           >
             <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -152,35 +237,35 @@ export default function TraderDashboardPage() {
             </div>
             <div>
               <h3 className="font-extrabold text-slate-900 text-base group-hover:text-emerald-700 transition-colors">
-                View Verification Certificates
+                My Stamping Applications
               </h3>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Search the central registry to view stamping logs and download official Schedule IX certificates with QR codes.
+                Track inspection status, assigned officer visit dates, and download digital verification certificates.
               </p>
             </div>
             <div className="text-xs font-bold text-emerald-700 flex items-center gap-1">
-              <span>Access Registry</span>
+              <span>Track Applications</span>
               <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
             </div>
           </Link>
 
           <Link
-            href="/verify"
+            href="/verify/LMO-2026-10001"
             className="p-6 rounded-3xl bg-white border border-slate-200 shadow-xs hover:shadow-md transition-all group flex flex-col justify-between space-y-4"
           >
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <ShieldCheck className="w-6 h-6" />
+              <QrCode className="w-6 h-6" />
             </div>
             <div>
               <h3 className="font-extrabold text-slate-900 text-base group-hover:text-indigo-700 transition-colors">
-                Public QR Code Scanner
+                Public QR Code Verification
               </h3>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Verify the tamper-evident cryptographic hash of any physical certificate or scale sticker.
+                Verify the tamper-evident cryptographic hash and validity of your physical scale QR stickers.
               </p>
             </div>
             <div className="text-xs font-bold text-indigo-700 flex items-center gap-1">
-              <span>Scan QR Code</span>
+              <span>Test Certificate QR</span>
               <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
             </div>
           </Link>
@@ -191,3 +276,4 @@ export default function TraderDashboardPage() {
     </div>
   );
 }
+

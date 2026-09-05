@@ -19,6 +19,10 @@
 
 # production
 /build
+**/build/
+.gradle/
+**/.gradle/
+**/local.properties
 
 # misc
 .DS_Store

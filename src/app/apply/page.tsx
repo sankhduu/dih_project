@@ -1,7 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase-client';
+import { useMetrologyStore } from '@/lib/store';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import {
@@ -21,14 +24,30 @@ import {
 } from 'lucide-react';
 
 export default function ApplyPage() {
-  // Form State
-  const [traderName, setTraderName] = useState('');
-  const [ownerName, setOwnerName] = useState('');
+  const router = useRouter();
+  const { currentUser } = useMetrologyStore();
+
+  // Form State - Pre-filled with logged in Trader's profile info
+  const [traderName, setTraderName] = useState(currentUser.businessName || 'Apex Supermarket & Grocery Store');
+  const [ownerName, setOwnerName] = useState(currentUser.fullName || 'Ramesh Kumar');
   const [instrumentType, setInstrumentType] = useState('Electronic Counter Scale (Class III)');
   const [capacity, setCapacity] = useState('30 kg (e = 5 g)');
-  const [address, setAddress] = useState('');
+  const [address, setAddress] = useState(currentUser.address || 'Shop No. 14, Main Market, Hauz Khas, New Delhi - 110016');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
+
+  // Sync profile when currentUser updates
+  useEffect(() => {
+    if (currentUser.fullName) {
+      setOwnerName(currentUser.fullName);
+    }
+    if (currentUser.businessName) {
+      setTraderName(currentUser.businessName);
+    }
+    if (currentUser.address) {
+      setAddress(currentUser.address);
+    }
+  }, [currentUser]);
 
   // UI State
   const [isLocating, setIsLocating] = useState(false);

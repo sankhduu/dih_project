@@ -33,7 +33,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [aadhaarNumber, setAadhaarNumber] = useState('');
-  const [selectedRole, setSelectedRole] = useState<UserRole>('APPLICANT');
+  const [selectedRole, setSelectedRole] = useState<'Trader' | 'LMO Officer' | 'GATC'>('Trader');
 
   // UI State
   const [loading, setLoading] = useState(false);
@@ -45,7 +45,7 @@ export default function SignupPage() {
     isEmailConfirmationRequired?: boolean;
   } | null>(null);
 
-  // Validate 12-digit Aadhaar strictly (digits only)
+  // Validate 12-digit Aadhaar (optional, digits only)
   const handleAadhaarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value.replace(/\D/g, ''); // keep only numbers
     if (rawValue.length <= 12) {
@@ -53,7 +53,7 @@ export default function SignupPage() {
     }
   };
 
-  const isAadhaarValid = /^\d{12}$/.test(aadhaarNumber);
+  const isAadhaarValid = aadhaarNumber.length === 0 || /^\d{12}$/.test(aadhaarNumber);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,8 +64,8 @@ export default function SignupPage() {
       return;
     }
 
-    if (!isAadhaarValid) {
-      setErrorMsg('Please enter a valid 12-digit Aadhaar Number.');
+    if (!email.trim()) {
+      setErrorMsg('Please enter a valid email address.');
       return;
     }
 
@@ -84,7 +84,7 @@ export default function SignupPage() {
         options: {
           data: {
             full_name: fullName.trim(),
-            aadhaar_number: aadhaarNumber,
+            aadhaar_number: aadhaarNumber || '123456789012',
             role: selectedRole,
           },
         },
@@ -101,23 +101,26 @@ export default function SignupPage() {
       await syncUserProfileToSupabase({
         id: userId,
         full_name: fullName.trim(),
-        aadhaar_number: aadhaarNumber,
+        aadhaar_number: aadhaarNumber || '123456789012',
         role: selectedRole,
         email: email.trim(),
       });
 
       // 3. Update local app store session
+      const normalizedRole: UserRole =
+        selectedRole === 'Trader' ? 'APPLICANT' : selectedRole === 'LMO Officer' ? 'LMO' : 'GATC';
+
       setCurrentUser({
         id: userId,
         fullName: fullName.trim(),
         email: email.trim(),
         mobile: '+91 98765 43210',
-        role: selectedRole,
-        businessName: selectedRole === 'APPLICANT' ? 'Registered Enterprise' : undefined,
-        designation: selectedRole === 'LMO' ? 'Legal Metrology Officer' : undefined,
+        role: normalizedRole,
+        businessName: selectedRole === 'Trader' ? 'Registered Enterprise' : undefined,
+        designation: selectedRole === 'LMO Officer' ? 'Legal Metrology Officer' : undefined,
         address: 'National Capital Region',
         district: 'South Delhi',
-        state: 'Delhi',
+        state: 'Delhi (NCT)',
         pinCode: '110001',
       });
 
@@ -322,11 +325,13 @@ export default function SignupPage() {
                   </div>
                   <select
                     value={selectedRole}
-                    onChange={(e) => setSelectedRole(e.target.value as UserRole)}
+                    onChange={(e) =>
+                      setSelectedRole(e.target.value as 'Trader' | 'LMO Officer' | 'GATC')
+                    }
                     className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#002B49] focus:bg-white transition-all cursor-pointer"
                   >
-                    <option value="APPLICANT">Trader / Commercial Enterprise Owner</option>
-                    <option value="LMO">Legal Metrology Officer (LMO Inspector)</option>
+                    <option value="Trader">Trader / Commercial Enterprise Owner</option>
+                    <option value="LMO Officer">LMO Officer (Legal Metrology Inspector)</option>
                     <option value="GATC">Govt. Approved Test Centre (GATC)</option>
                   </select>
                 </div>

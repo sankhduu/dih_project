@@ -5,21 +5,24 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const pathname = req.nextUrl.pathname;
 
-  // Protect /admin and any sub-routes (/admin/*)
-  if (pathname.startsWith('/admin')) {
+  // Protect /admin and root (/)
+  if (pathname === '/' || pathname.startsWith('/admin')) {
     // 1. Check for Supabase Auth session tokens in cookies
     const allCookies = req.cookies.getAll();
     const authCookie = allCookies.find(
       (c) =>
         c.name.includes('-auth-token') ||
         c.name.startsWith('sb-') ||
-        c.name.includes('supabase')
+        c.name.includes('supabase') ||
+        c.name.includes('emaap_auth')
     );
 
-    // If no auth cookie is present, kick back to login page
+    // If no auth cookie is present on protected paths, kick back to login page
     if (!authCookie || !authCookie.value) {
       const loginUrl = new URL('/login', req.url);
-      loginUrl.searchParams.set('redirect', pathname);
+      if (pathname.startsWith('/admin')) {
+        loginUrl.searchParams.set('redirect', pathname);
+      }
       return NextResponse.redirect(loginUrl);
     }
 
@@ -36,11 +39,12 @@ export async function middleware(req: NextRequest) {
         }
       }
 
-      // Check if session contains 'Trader' or 'APPLICANT' role
+      // Check if session contains 'Trader' or 'APPLICANT' role on /admin routes
       if (
-        rawContent.includes('"role":"APPLICANT"') ||
-        rawContent.includes('"role":"Trader"') ||
-        rawContent.includes('"role":"trader"')
+        pathname.startsWith('/admin') &&
+        (rawContent.includes('"role":"APPLICANT"') ||
+          rawContent.includes('"role":"Trader"') ||
+          rawContent.includes('"role":"trader"'))
       ) {
         // Kick unauthorized Trader role back to login or trader dashboard
         const unauthorizedUrl = new URL('/login', req.url);
@@ -56,5 +60,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: ['/', '/admin/:path*'],
 };

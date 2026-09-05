@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase-client';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { useMetrologyStore } from '@/lib/store';
@@ -44,12 +46,35 @@ interface TraderSummary {
 }
 
 export default function HomePage() {
+  const router = useRouter();
   const { currentUser, deficiencyMemos, resetToDefaultData } = useMetrologyStore();
   const [activeTab, setActiveTab] = useState<string>('analytics-dashboard');
+  const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
 
   // Stats state from API / Supabase
   const [traders, setTraders] = useState<TraderSummary[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+
+  // Authentication check for first-time / unauthenticated visitors
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const storedUser = typeof window !== 'undefined' ? localStorage.getItem('eMaap_currentUser') : null;
+        
+        // If neither Supabase session nor a local stored user exists, redirect to login
+        if (!data.session && !storedUser) {
+          router.replace('/login');
+          return;
+        }
+      } catch {
+        router.replace('/login');
+        return;
+      }
+      setCheckingAuth(false);
+    }
+    checkAuth();
+  }, [router]);
 
   useEffect(() => {
     async function fetchStats() {

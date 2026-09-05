@@ -24,10 +24,68 @@ export type UserProfileRole = 'APPLICANT' | 'LMO' | 'GATC' | 'ADMIN' | 'Trader' 
 export interface ProfileRecord {
   id: string; // Auth UUID
   full_name: string;
-  aadhaar_number: string;
+  aadhaar_number?: string;
   role: UserProfileRole | string;
   email?: string;
   created_at?: string;
+}
+
+/**
+ * Normalizes any role representation to both internal store UserRole, display label, and target dashboard path.
+ */
+export function normalizeUserRole(rawRole?: string): {
+  storeRole: 'APPLICANT' | 'LMO' | 'GATC' | 'ADMIN';
+  displayRole: 'Trader' | 'LMO Officer' | 'GATC';
+  redirectPath: string;
+} {
+  if (!rawRole) {
+    return {
+      storeRole: 'APPLICANT',
+      displayRole: 'Trader',
+      redirectPath: '/trader/dashboard',
+    };
+  }
+
+  const normalized = rawRole.trim().toUpperCase();
+
+  if (
+    normalized === 'LMO' ||
+    normalized === 'LMO OFFICER' ||
+    normalized.includes('OFFICER') ||
+    normalized === 'ADMIN'
+  ) {
+    return {
+      storeRole: 'LMO',
+      displayRole: 'LMO Officer',
+      redirectPath: '/admin/traders',
+    };
+  }
+
+  if (normalized === 'GATC' || normalized.includes('GATC')) {
+    return {
+      storeRole: 'GATC',
+      displayRole: 'GATC',
+      redirectPath: '/gatc/dashboard',
+    };
+  }
+
+  if (
+    normalized === 'TRADER' ||
+    normalized === 'APPLICANT' ||
+    normalized.includes('TRADER')
+  ) {
+    return {
+      storeRole: 'APPLICANT',
+      displayRole: 'Trader',
+      redirectPath: '/trader/dashboard',
+    };
+  }
+
+  return {
+    storeRole: 'APPLICANT',
+    displayRole: 'Trader',
+    redirectPath: '/trader/dashboard',
+  };
 }
 
 /**
@@ -37,31 +95,7 @@ export interface ProfileRecord {
  * - 'GATC' -> /gatc/dashboard
  */
 export function getRedirectPathForRole(role?: string): string {
-  if (!role) return '/trader/dashboard';
-  const normalized = role.trim().toUpperCase();
-
-  if (
-    normalized === 'LMO' ||
-    normalized === 'LMO OFFICER' ||
-    normalized.includes('OFFICER') ||
-    normalized === 'ADMIN'
-  ) {
-    return '/admin/traders';
-  }
-
-  if (normalized === 'GATC' || normalized.includes('GATC')) {
-    return '/gatc/dashboard';
-  }
-
-  if (
-    normalized === 'TRADER' ||
-    normalized === 'APPLICANT' ||
-    normalized.includes('TRADER')
-  ) {
-    return '/trader/dashboard';
-  }
-
-  return '/trader/dashboard';
+  return normalizeUserRole(role).redirectPath;
 }
 
 /**
@@ -95,7 +129,7 @@ export async function syncUserProfileToSupabase(profile: ProfileRecord) {
         {
           id: profile.id,
           full_name: profile.full_name,
-          aadhaar_number: profile.aadhaar_number,
+          aadhaar_number: profile.aadhaar_number || '123456789012',
           role: profile.role,
           email: profile.email || '',
           updated_at: new Date().toISOString(),
