@@ -173,7 +173,8 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
             </Link>
 
             {/* Quick Public Scanner Button */}
-            <button
+            <Link
+              href="/auth/citizen"
               onClick={() => setActiveTab('public-verify')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer ${
                 activeTab === 'public-verify'
@@ -183,7 +184,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
             >
               <QrCode className="w-3.5 h-3.5" />
               <span>Public QR Scan</span>
-            </button>
+            </Link>
 
             {/* Offline Mode Toggle for LMO Officers - Wait until mounted to prevent hydration mismatch */}
             {mounted && currentUser.role === 'LMO' && (
@@ -471,17 +472,29 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
             <>
               <TabButton
                 active={activeTab === 'applicant-dashboard'}
-                onClick={() => setActiveTab('applicant-dashboard')}
+                onClick={() => {
+                  setActiveTab('applicant-dashboard');
+                  router.push('/trader/dashboard');
+                }}
+                href="/trader/dashboard"
                 label="My Instruments & Vault"
               />
               <TabButton
-                active={activeTab === 'applicant-applications'}
-                onClick={() => setActiveTab('applicant-applications')}
+                active={activeTab === 'applicant-applications' || activeTab === 'tracker'}
+                onClick={() => {
+                  setActiveTab('applicant-applications');
+                  router.push('/tracker');
+                }}
+                href="/tracker"
                 label="Application Tracker"
               />
               <TabButton
-                active={activeTab === 'applicant-deficiencies'}
-                onClick={() => setActiveTab('applicant-deficiencies')}
+                active={activeTab === 'applicant-deficiencies' || activeTab === 'notices'}
+                onClick={() => {
+                  setActiveTab('applicant-deficiencies');
+                  router.push('/notices');
+                }}
+                href="/notices"
                 label="Deficiency Notices"
               />
             </>
@@ -547,9 +560,13 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
 
           {/* PUBLIC TAB (Always available) */}
           <TabButton
-            active={activeTab === 'public-verify'}
-            onClick={() => setActiveTab('public-verify')}
-            label="Citizen QR Authentication"
+            active={activeTab === 'public-verify' || activeTab === 'citizen-auth'}
+            onClick={() => {
+              setActiveTab('public-verify');
+              router.push('/auth/citizen');
+            }}
+            href="/auth/citizen"
+            label="Citizen Authentication"
           />
         </div>
       </div>
@@ -561,20 +578,29 @@ function TabButton({
   active,
   onClick,
   label,
+  href,
 }: {
   active: boolean;
-  onClick: () => void;
+  onClick?: () => void;
   label: string;
+  href?: string;
 }) {
+  const className = `px-3 py-1.5 text-xs font-semibold rounded-md whitespace-nowrap transition-all inline-block cursor-pointer ${
+    active
+      ? 'bg-[#002B49] text-white shadow-xs'
+      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+  }`;
+
+  if (href) {
+    return (
+      <Link href={href} onClick={onClick} className={className}>
+        {label}
+      </Link>
+    );
+  }
+
   return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1.5 text-xs font-semibold rounded-md whitespace-nowrap transition-all ${
-        active
-          ? 'bg-[#002B49] text-white shadow-xs'
-          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-      }`}
-    >
+    <button onClick={onClick} className={className}>
       {label}
     </button>
   );
