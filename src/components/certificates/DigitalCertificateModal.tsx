@@ -27,6 +27,12 @@ export interface TraderRecord {
   make_model?: string;
   latitude?: number | null;
   longitude?: number | null;
+  photo_url?: string;
+  checklist_confirmed?: boolean;
+  lmo_id?: string;
+  digital_signature?: string;
+  signed_at?: string;
+  rejection_reason?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -47,8 +53,9 @@ export function DigitalCertificateModal({ isOpen, onClose, shop }: DigitalCertif
   const certificateNumber = `LM/CERT/${shop.district?.toUpperCase() || 'ROH'}/${(shop.license_number || shop.id || '2026').replace(/[^a-zA-Z0-9]/g, '').slice(-8)}`;
   
   // Format the approval timestamp
-  const approvalDate = shop.updated_at
-    ? new Date(shop.updated_at).toLocaleString('en-IN', {
+  const rawDate = shop.signed_at || shop.updated_at;
+  const approvalDate = rawDate
+    ? new Date(rawDate).toLocaleString('en-IN', {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
@@ -70,19 +77,29 @@ export function DigitalCertificateModal({ isOpen, onClose, shop }: DigitalCertif
   const lat = typeof shop.latitude === 'number' ? shop.latitude : 28.8955;
   const lng = typeof shop.longitude === 'number' ? shop.longitude : 76.6066;
 
+  const signatureHash =
+    shop.digital_signature ||
+    `GATC-SIG-${(shop.license_number || 'ROH2026').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()}-8F92A9C4`;
+  const inspectingLmoId = shop.lmo_id || `LMO-${shop.district?.toUpperCase().slice(0, 3) || 'ROH'}-OFFICER-01`;
+
   // JSON payload encoded in QR code
   const qrPayload = JSON.stringify({
+    certificateNumber,
     shopId: shop.id || shop.license_number,
     shopName: shop.shop_name,
     licenseNumber: shop.license_number,
     scaleType: shop.instrument_type || 'Commercial Counter Scale',
+    capacity: shop.capacity || '30 kg',
     status: 'Approved',
+    lmoId: inspectingLmoId,
+    gatcSignature: signatureHash,
     gps: {
       latitude: lat,
       longitude: lng,
     },
-    approvedAt: shop.updated_at || new Date().toISOString(),
-    verifier: 'Legal Metrology Officer (LMO)',
+    signedAt: shop.signed_at || shop.updated_at || new Date().toISOString(),
+    verifierAuthority: 'Govt. Approved Test Centre (GATC) • DoCA',
+    verifyUrl: typeof window !== 'undefined' ? `${window.location.origin}/verify/${encodeURIComponent(shop.id || shop.license_number)}` : `https://emapan.gov.in/verify/${encodeURIComponent(shop.id || shop.license_number)}`
   });
 
   return (
@@ -107,7 +124,7 @@ export function DigitalCertificateModal({ isOpen, onClose, shop }: DigitalCertif
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-[#002B49] font-black text-xs shadow-md transition-all cursor-pointer"
             >
               <Printer className="w-4 h-4" />
-              <span>Print / Download PDF</span>
+              <span>Print / Save as PDF</span>
             </button>
             <button
               onClick={onClose}
@@ -159,12 +176,33 @@ export function DigitalCertificateModal({ isOpen, onClose, shop }: DigitalCertif
               <span className="text-[10px] font-bold uppercase text-slate-400 block">Verification Status</span>
               <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md text-[11px]">
                 <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                Approved & Stamped
+                Approved & Digitally Signed
               </span>
             </div>
             <div>
               <span className="text-[10px] font-bold uppercase text-slate-400 block">Jurisdiction District</span>
               <span className="font-bold text-slate-800">{shop.district || 'Rohtak'}, Haryana</span>
+            </div>
+          </div>
+
+          {/* GATC Cryptographic Digital Signature Strip */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-slate-900 to-[#002B49] text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-400/20 text-amber-300 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-4 h-4 text-amber-300" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 block">
+                  GATC Cryptographic Digital Signature
+                </span>
+                <span className="font-mono text-xs font-bold text-white tracking-wider">
+                  {signatureHash}
+                </span>
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <span className="text-[10px] text-slate-300 block">Digital Timestamp:</span>
+              <span className="font-mono text-[11px] text-emerald-300 font-bold">{approvalDate}</span>
             </div>
           </div>
 
@@ -192,7 +230,7 @@ export function DigitalCertificateModal({ isOpen, onClose, shop }: DigitalCertif
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div className="bg-slate-50/70 p-3 rounded-xl border border-slate-100">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Scale / Instrument Type</span>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Scale / Instrument Specs</span>
                   <span className="font-bold text-slate-900 text-xs mt-0.5 block">
                     {shop.instrument_type || 'Counter Scale Class III'}
                   </span>
@@ -203,14 +241,14 @@ export function DigitalCertificateModal({ isOpen, onClose, shop }: DigitalCertif
 
                 <div className="bg-slate-50/70 p-3 rounded-xl border border-slate-100">
                   <span className="text-[10px] font-bold uppercase text-slate-400 block flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-emerald-600" />
-                    LMO Approval Timestamp
+                    <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                    Inspecting LMO Field Officer ID
                   </span>
                   <span className="font-bold text-slate-900 text-xs mt-0.5 block font-mono">
-                    {approvalDate}
+                    {inspectingLmoId}
                   </span>
                   <span className="text-[10px] text-emerald-700 font-semibold">
-                    ✓ Verified via Mobile App
+                    ✓ Field Inspection &amp; GPS Verified
                   </span>
                 </div>
               </div>
@@ -228,7 +266,7 @@ export function DigitalCertificateModal({ isOpen, onClose, shop }: DigitalCertif
                     </span>
                   </div>
                   <p className="text-[11px] text-emerald-700">
-                    Geotagged proof captured in-situ by authorized Legal Metrology Officer via mobile device GPS sensor.
+                    Tamper-proof coordinates captured in-situ by authorized LMO and digitally signed by Central GATC laboratory.
                   </p>
                 </div>
               </div>
@@ -254,7 +292,7 @@ export function DigitalCertificateModal({ isOpen, onClose, shop }: DigitalCertif
                   ID: {shop.id || shop.license_number}
                 </p>
                 <p className="text-[9px] text-slate-500 max-w-[150px]">
-                  Encodes Shop ID, Status, Coordinates &amp; Approval Stamp
+                  Encodes Shop ID, Specs, LMO ID, GATC Signature &amp; GPS
                 </p>
               </div>
             </div>
@@ -263,15 +301,15 @@ export function DigitalCertificateModal({ isOpen, onClose, shop }: DigitalCertif
           {/* Bottom Authority & Seal Footnotes */}
           <div className="pt-6 border-t border-slate-200 grid grid-cols-2 gap-4 text-xs">
             <div>
-              <div className="border-b border-slate-400 w-44 pb-1 mb-1">
-                <span className="font-mono text-[11px] font-bold text-slate-800">Inspector R. K. Sharma</span>
+              <div className="border-b border-slate-400 w-48 pb-1 mb-1">
+                <span className="font-mono text-[11px] font-bold text-slate-800">GATC Signatory / Controller</span>
               </div>
-              <p className="text-[10px] font-bold uppercase text-slate-500">Legal Metrology Officer (LMO)</p>
-              <p className="text-[10px] text-slate-400">Department of Legal Metrology, Haryana</p>
+              <p className="text-[10px] font-bold uppercase text-slate-500">Government Approved Test Centre (GATC)</p>
+              <p className="text-[10px] text-slate-400">Accredited by Department of Consumer Affairs</p>
             </div>
             <div className="text-right flex flex-col items-end">
               <div className="w-16 h-16 rounded-full border-2 border-dashed border-[#002B49] flex items-center justify-center text-center p-1 text-[8px] font-bold text-[#002B49] uppercase leading-tight bg-slate-50">
-                Statutory Stamping Seal
+                Statutory Digital Seal
               </div>
               <p className="text-[9px] text-slate-400 mt-1">Valid for 12 months under Legal Metrology Act, 2009</p>
             </div>

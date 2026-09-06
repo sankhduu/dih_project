@@ -13,7 +13,7 @@ class OfflineInspectionReport {
   final String traderId;
   final String traderName;
   final String licenseNumber;
-  final String inspectionStatus; // 'Passed', 'Failed', 'Pending'
+  final String inspectionStatus; // 'Under_Review', 'Passed', 'Failed', 'Pending'
   final String gpsCoordinates;
   final String? photoPath;
   final String sealNumber;
@@ -63,7 +63,7 @@ class OfflineInspectionReport {
       traderId: json['trader_id'] ?? '',
       traderName: json['trader_name'] ?? 'Trader',
       licenseNumber: json['license_number'] ?? '',
-      inspectionStatus: json['inspection_status'] ?? 'Passed',
+      inspectionStatus: json['inspection_status'] ?? 'Under_Review',
       gpsCoordinates: json['gps_coordinates'] ?? '',
       photoPath: json['photo_path'],
       sealNumber: json['seal_number'] ?? '',

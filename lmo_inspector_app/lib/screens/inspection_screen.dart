@@ -9,8 +9,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class InspectionScreen extends StatefulWidget {
   final Map<String, dynamic> trader;
+  final String? officerEmail;
 
-  const InspectionScreen({super.key, required this.trader});
+  const InspectionScreen({
+    super.key,
+    required this.trader,
+    this.officerEmail,
+  });
 
   @override
   State<InspectionScreen> createState() => _InspectionScreenState();
@@ -232,6 +237,8 @@ class _InspectionScreenState extends State<InspectionScreen> {
     final shopName = (widget.trader['shop_name'] ?? widget.trader['trader_name'] ?? 'Commercial Shop').toString();
     final double lat = _liveLatitude ?? 28.8955;
     final double lng = _liveLongitude ?? 76.6066;
+    final String lmoId = widget.officerEmail ?? 'officer.lmo@haryana.gov.in';
+    final String photoPath = _capturedImagePath ?? 'camera_live_proof_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
     // 2. Check network connectivity with connectivity_plus
     bool isConnected = false;
@@ -244,27 +251,48 @@ class _InspectionScreenState extends State<InspectionScreen> {
 
     bool syncedOnline = false;
 
-    // 3. Online path: Update Supabase directly
+    // 3. Online path: Update Supabase directly to Under_Review
     if (isConnected) {
       try {
         final supabase = Supabase.instance.client;
 
         await supabase.from('traders_list').update({
-          'status': 'Approved',
+          'status': 'Under_Review',
           'latitude': lat,
           'longitude': lng,
           'updated_at': DateTime.now().toIso8601String(),
+          'photo_url': photoPath,
+          'checklist_confirmed': true,
+          'lmo_id': lmoId,
         }).eq('id', traderId);
 
         syncedOnline = true;
-        debugPrint('✅ Online sync to Supabase traders_list succeeded for trader: $traderId');
+        debugPrint('✅ Online sync to Supabase traders_list succeeded for trader: $traderId (Under_Review)');
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Inspection forwarded to GATC for digital signature.'),
+                  ),
+                ],
+              ),
+              backgroundColor: emeraldGreen,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
       } catch (e) {
         debugPrint('Online sync to Supabase failed or table not found, falling back to offline: $e');
         syncedOnline = false;
       }
     }
 
-    // 4. Offline path: Save approval data as JSON in SharedPreferences
+    // 4. Offline path: Save inspection payload as JSON in SharedPreferences
     if (!syncedOnline) {
       try {
         final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -274,11 +302,13 @@ class _InspectionScreenState extends State<InspectionScreen> {
           'id': traderId,
           'license_number': licenseNumber,
           'shop_name': shopName,
-          'status': 'Approved',
+          'status': 'Under_Review',
           'latitude': lat,
           'longitude': lng,
-          'photo_path': _capturedImagePath ?? 'camera_live_proof_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          'photo_path': photoPath,
           'timestamp': DateTime.now().toIso8601String(),
+          'checklist_confirmed': true,
+          'lmo_id': lmoId,
         };
 
         // Remove duplicate if already present in offline queue
@@ -302,7 +332,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
                   Icon(Icons.wifi_off, color: Colors.white, size: 20),
                   SizedBox(width: 8),
                   Expanded(
-                    child: Text('No internet. Saved locally. Will sync when online.'),
+                    child: Text('Offline Mode: Inspection saved locally. Will auto-sync when network is restored.'),
                   ),
                 ],
               ),
@@ -322,7 +352,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
       _isSubmitting = false;
     });
 
-    // 5. Official Statutory Verification Certificate Dialog
+    // 5. Official Verification Forwarded Dialog
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -336,14 +366,14 @@ class _InspectionScreenState extends State<InspectionScreen> {
                 color: emeraldGreen.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.verified, color: emeraldGreen, size: 28),
+              child: const Icon(Icons.send_rounded, color: emeraldGreen, size: 28),
             ),
             const SizedBox(width: 12),
             const Expanded(
               child: Text(
-                'Approved & Certified',
+                'Inspection Forwarded to GATC',
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: 17,
                   fontWeight: FontWeight.bold,
                   color: primaryNavy,
                 ),
@@ -356,7 +386,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Statutory Verification Certificate (Form VIII) has been issued under Section 24 of the Legal Metrology Act, 2009.',
+              'Statutory physical inspection (5-point checklist, GPS coordinates, and photo proof) has been recorded and forwarded to GATC for cryptographic digital signing.',
               style: TextStyle(fontSize: 13, color: Colors.black87),
             ),
             const SizedBox(height: 12),
@@ -374,18 +404,18 @@ class _InspectionScreenState extends State<InspectionScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'STATUS:',
+                        'LIFECYCLE STATUS:',
                         style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey),
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: emeraldGreen.withValues(alpha: 0.15),
+                          color: accentGold.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Text(
-                          'Approved',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: emeraldGreen),
+                          'Under_Review',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: accentGold),
                         ),
                       ),
                     ],
@@ -408,14 +438,16 @@ class _InspectionScreenState extends State<InspectionScreen> {
                         color: syncedOnline ? emeraldGreen : accentGold,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        syncedOnline
-                            ? 'Synced live to Supabase traders_list'
-                            : 'Saved locally in offline sync queue',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: syncedOnline ? emeraldGreen : accentGold,
+                      Expanded(
+                        child: Text(
+                          syncedOnline
+                              ? 'Forwarded live to GATC via Supabase'
+                              : 'Saved locally in offline sync queue',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: syncedOnline ? emeraldGreen : accentGold,
+                          ),
                         ),
                       ),
                     ],
@@ -429,7 +461,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
             style: ElevatedButton.styleFrom(
-              backgroundColor: emeraldGreen,
+              backgroundColor: primaryNavy,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
@@ -938,7 +970,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
 
                   const SizedBox(height: 24),
 
-                  // Large Green "Approve & Certify" Button
+                  // Submit Inspection to GATC Button
                   ElevatedButton(
                     onPressed: _isSubmitting ? null : _handleApproveAndCertify,
                     style: ElevatedButton.styleFrom(
@@ -965,7 +997,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
                               ),
                               const SizedBox(width: 10),
                               Text(
-                                _isLocating ? 'Acquiring GPS...' : 'Saving Certificate...',
+                                _isLocating ? 'Acquiring GPS...' : 'Forwarding to GATC...',
                                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                               ),
                             ],
@@ -973,10 +1005,10 @@ class _InspectionScreenState extends State<InspectionScreen> {
                         : const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.verified, size: 22),
+                              Icon(Icons.send_rounded, size: 22),
                               SizedBox(width: 10),
                               Text(
-                                'Approve & Certify',
+                                'Submit Inspection to GATC',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,

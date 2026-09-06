@@ -526,12 +526,20 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
             <>
               <TabButton
                 active={activeTab === 'gatc-queue'}
-                onClick={() => setActiveTab('gatc-queue')}
-                label="GATC Lab Calibration Queue"
+                onClick={() => {
+                  setActiveTab('gatc-queue');
+                  router.push('/gatc/dashboard');
+                }}
+                href="/gatc/dashboard"
+                label="Pending Certification Queue"
               />
               <TabButton
                 active={activeTab === 'gatc-accreditation'}
-                onClick={() => setActiveTab('gatc-accreditation')}
+                onClick={() => {
+                  setActiveTab('gatc-accreditation');
+                  router.push('/gatc/dashboard');
+                }}
+                href="/gatc/dashboard"
                 label="Accreditation & Standards"
               />
             </>

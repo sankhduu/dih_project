@@ -32,7 +32,7 @@ const DEFAULT_TRADER_SHOP: TraderRecord = {
   owner_name: 'Ramesh Kumar Sharma',
   license_number: 'HR-LMO-ROH-2026-042',
   district: 'Rohtak',
-  status: 'Pending',
+  status: 'Pending_Inspection',
   address: 'Booth 12, Main Market, Model Town, Rohtak - 124001',
   instrument_type: 'Electronic Tabletop Scale (30 kg Class III)',
   capacity: '30 kg / e=2g',
@@ -53,6 +53,7 @@ export default function TraderDashboardPage() {
   const [traderShop, setTraderShop] = useState<TraderRecord>(DEFAULT_TRADER_SHOP);
   const [isCertificateOpen, setIsCertificateOpen] = useState<boolean>(false);
   const [justApproved, setJustApproved] = useState<boolean>(false);
+  const [isReapplying, setIsReapplying] = useState<boolean>(false);
 
   // 1. Client-Side Route Protection Guard
   useEffect(() => {
@@ -130,18 +131,17 @@ export default function TraderDashboardPage() {
     fetchTraderRecord();
   }, []);
 
-  // 3. Supabase Realtime Listener (Listening to the Mobile App)
+  // 3. Supabase Realtime Listener (Listening to LMO and GATC actions)
   useEffect(() => {
     const channel = supabase
-      .channel('table-db-changes')
+      .channel('trader-realtime-lifecycle')
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'traders_list' },
+        { event: '*', schema: 'public', table: 'traders_list' },
         (payload) => {
-          const updatedRow = payload.new as TraderRecord;
+          const updatedRow = (payload.new || payload.old) as TraderRecord;
           if (!updatedRow) return;
 
-          // If the update is for this trader's shop (or matches license/id)
           setTraderShop((prev) => {
             if (!prev.id || prev.id === updatedRow.id || prev.license_number === updatedRow.license_number) {
               if (prev.status !== 'Approved' && updatedRow.status === 'Approved') {
@@ -160,6 +160,40 @@ export default function TraderDashboardPage() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  // Handler for Re-Applying when rejected
+  const handleReapply = async () => {
+    setIsReapplying(true);
+    try {
+      if (traderShop.id) {
+        await supabase
+          .from('traders_list')
+          .update({
+            status: 'Pending_Inspection',
+            rejection_reason: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', traderShop.id);
+      }
+      setTraderShop((prev) => ({
+        ...prev,
+        status: 'Pending_Inspection',
+        rejection_reason: undefined,
+        updated_at: new Date().toISOString(),
+      }));
+    } catch (err) {
+      console.warn('Error resetting application:', err);
+      // Fallback local update
+      setTraderShop((prev) => ({
+        ...prev,
+        status: 'Pending_Inspection',
+        rejection_reason: undefined,
+        updated_at: new Date().toISOString(),
+      }));
+    } finally {
+      setIsReapplying(false);
+    }
+  };
 
   if (!authorized) {
     return (
@@ -181,7 +215,12 @@ export default function TraderDashboardPage() {
 
   const displayEmail = sessionEmail || currentUser.email || 'trader@demo.com';
   const displayName = currentUser.fullName || traderShop.owner_name || 'Ramesh Kumar (Proprietor)';
-  const isApproved = (traderShop.status || '').toLowerCase() === 'approved';
+
+  const rawStatus = (traderShop.status || 'Pending_Inspection').toLowerCase();
+  const isApproved = rawStatus === 'approved';
+  const isRejected = rawStatus === 'rejected';
+  const isUnderReview = rawStatus === 'under_review';
+  const isPendingInspection = rawStatus === 'pending_inspection' || rawStatus === 'pending';
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-900">
@@ -197,11 +236,11 @@ export default function TraderDashboardPage() {
               </div>
               <div>
                 <h4 className="font-black text-sm text-white flex items-center gap-1.5">
-                  <span>Inspection Approved by Field Officer!</span>
+                  <span>Certificate Approved &amp; Digitally Signed!</span>
                   <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping"></span>
                 </h4>
                 <p className="text-xs text-emerald-100 mt-0.5">
-                  Your scale for <strong>{traderShop.shop_name}</strong> has just been verified and stamped by the LMO.
+                  Your scale for <strong>{traderShop.shop_name}</strong> has been digitally signed by GATC. Download your verified QR certificate now.
                 </p>
               </div>
             </div>
@@ -210,6 +249,75 @@ export default function TraderDashboardPage() {
               className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-[#002B49] font-black text-xs shadow-md transition-all cursor-pointer whitespace-nowrap"
             >
               Open Certificate Now
+            </button>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* WHEN APPROVED: GREEN BANNER WITH DOWNLOAD CERTIFICATE BUTTON */}
+        {/* ========================================================================= */}
+        {isApproved && (
+          <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-emerald-500 animate-in fade-in duration-300">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <CheckCircle2 className="w-7 h-7 text-amber-300" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/50 text-emerald-100 border border-emerald-400/40">
+                    Statutory Approval Complete
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
+                </div>
+                <h3 className="text-base sm:text-lg font-black text-white">
+                  Verification Approved &amp; Digitally Signed by GATC
+                </h3>
+                <p className="text-xs text-emerald-100">
+                  Official Schedule IX Form V certificate is issued with embedded QR code.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsCertificateOpen(true)}
+              className="px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-[#002B49] font-black text-xs sm:text-sm shadow-md hover:shadow-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-2"
+            >
+              <QrCode className="w-4 h-4" />
+              <span>Download Verified QR Certificate</span>
+            </button>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* WHEN REJECTED: RED BANNER WITH REJECTION REASON & RE-APPLY BUTTON */}
+        {/* ========================================================================= */}
+        {isRejected && (
+          <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-rose-600 via-rose-700 to-red-800 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-rose-500 animate-in fade-in duration-300">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                <AlertTriangle className="w-7 h-7 text-amber-300" />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-rose-500/50 text-rose-100 border border-rose-400/40">
+                    Deficiency Notice (Form VI)
+                  </span>
+                </div>
+                <h3 className="text-base sm:text-lg font-black text-white">
+                  Application Rejected by GATC with Notice
+                </h3>
+                <p className="text-xs text-rose-100 leading-relaxed max-w-2xl bg-rose-900/40 p-2.5 rounded-xl border border-rose-400/30">
+                  <strong>Deficiency Remarks:</strong>{' '}
+                  {traderShop.rejection_reason || 'Seal mismatch or scale uncalibrated. Tolerances exceeded statutory limits under Legal Metrology Act, 2009.'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleReapply}
+              disabled={isReapplying}
+              className="px-5 py-3 rounded-2xl bg-white hover:bg-slate-100 text-rose-800 font-black text-xs sm:text-sm shadow-md hover:shadow-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-2 disabled:opacity-50 shrink-0"
+            >
+              <PlusCircle className={`w-4 h-4 ${isReapplying ? 'animate-spin' : ''}`} />
+              <span>Re-Apply / Submit Rectification</span>
             </button>
           </div>
         )}
@@ -262,7 +370,7 @@ export default function TraderDashboardPage() {
         </div>
 
         {/* ========================================================================= */}
-        {/* CURRENT VERIFICATION & SCALE STAMPING STATUS CARD (REAL-TIME SYNC) */}
+        {/* LIVE APPLICATION TRACKER BAR (MULTI-STEP STEPPER: 1 -> 2 -> 3 -> 4) */}
         {/* ========================================================================= */}
         <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-8 space-y-6 relative overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
@@ -283,45 +391,227 @@ export default function TraderDashboardPage() {
               </div>
             </div>
 
-            {/* Real-time Status Badge & Dynamic Button */}
+            {/* Live Status Badge & Certificate Trigger */}
             <div className="flex flex-wrap items-center gap-3">
-              {/* Dynamic Status Badge */}
-              {isApproved ? (
-                <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 ring-2 ring-emerald-400/20 shadow-2xs animate-in fade-in duration-300">
+              {isApproved && (
+                <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 ring-2 ring-emerald-400/20 shadow-2xs">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   <span>Approved</span>
                 </span>
-              ) : (
+              )}
+              {isUnderReview && (
+                <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-300 ring-2 ring-blue-400/20 shadow-2xs">
+                  <Clock className="w-4 h-4 text-blue-600 animate-spin" />
+                  <span>Under Review (LMO Submitted)</span>
+                </span>
+              )}
+              {isPendingInspection && (
                 <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-300 shadow-2xs">
-                  <Clock className="w-4 h-4 text-amber-600 animate-spin" />
-                  <span>Pending</span>
+                  <Clock className="w-4 h-4 text-amber-600" />
+                  <span>Pending Inspection</span>
+                </span>
+              )}
+              {isRejected && (
+                <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-300 shadow-2xs">
+                  <AlertTriangle className="w-4 h-4 text-rose-600" />
+                  <span>Rejected</span>
                 </span>
               )}
 
-              {/* Dynamically Revealed Button: View Digital Certificate (QR) */}
               {isApproved && (
                 <button
                   onClick={() => setIsCertificateOpen(true)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-[#002B49] hover:bg-[#003B66] text-white font-black text-xs shadow-md hover:shadow-lg transition-all cursor-pointer animate-in fade-in zoom-in-95 duration-300"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-[#002B49] hover:bg-[#003B66] text-white font-black text-xs shadow-md hover:shadow-lg transition-all cursor-pointer"
                 >
                   <QrCode className="w-4 h-4 text-amber-400" />
-                  <span>View Digital Certificate (QR)</span>
+                  <span>View Verified QR Certificate</span>
                 </button>
               )}
             </div>
           </div>
 
+          {/* 4-Step Visual Progress Stepper */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-400">
+              <span>Lifecycle Verification Stepper</span>
+              <span className="flex items-center gap-1 font-mono text-[11px] text-emerald-700 font-semibold normal-case">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Supabase Realtime Synced</span>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+              {/* Step 1: Applied */}
+              <div className="p-4 rounded-2xl border bg-emerald-50/60 border-emerald-200 relative">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+                    Step 1
+                  </span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="font-extrabold text-slate-900 text-sm mt-1">1. Applied</div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Application registered and routed to jurisdictional district officer.
+                </p>
+                <div className="mt-2 text-[10px] font-semibold text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-md inline-block">
+                  ✓ Application Logged
+                </div>
+              </div>
+
+              {/* Step 2: Field Inspection Completed */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  isUnderReview || isApproved || isRejected
+                    ? 'bg-emerald-50/60 border-emerald-200'
+                    : 'bg-amber-50/70 border-amber-200 ring-2 ring-amber-400/30'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Step 2
+                  </span>
+                  {isUnderReview || isApproved || isRejected ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <Clock className="w-4 h-4 text-amber-600 animate-spin" />
+                  )}
+                </div>
+                <div className="font-extrabold text-slate-900 text-sm mt-1">
+                  2. Field Inspection
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  LMO performs checklist, photo capture, and GPS coordinate lock.
+                </p>
+                <div className="mt-2 text-[10px] font-semibold">
+                  {isUnderReview || isApproved || isRejected ? (
+                    <span className="text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-md inline-block">
+                      ✓ Inspected with GPS &amp; Photo
+                    </span>
+                  ) : (
+                    <span className="text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-md inline-block">
+                      ● Awaiting LMO Visit
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Step 3: GATC Digital Signing */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  isApproved
+                    ? 'bg-emerald-50/60 border-emerald-200'
+                    : isRejected
+                    ? 'bg-rose-50/70 border-rose-200 ring-2 ring-rose-400/30'
+                    : isUnderReview
+                    ? 'bg-blue-50/70 border-blue-200 ring-2 ring-blue-400/30'
+                    : 'bg-slate-50 border-slate-200 opacity-60'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Step 3
+                  </span>
+                  {isApproved ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  ) : isRejected ? (
+                    <AlertTriangle className="w-4 h-4 text-rose-600" />
+                  ) : isUnderReview ? (
+                    <Clock className="w-4 h-4 text-blue-600 animate-pulse" />
+                  ) : (
+                    <Clock className="w-4 h-4 text-slate-400" />
+                  )}
+                </div>
+                <div className="font-extrabold text-slate-900 text-sm mt-1">
+                  3. GATC Digital Signing
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Central GATC lab reviews inspection findings and cryptographically signs.
+                </p>
+                <div className="mt-2 text-[10px] font-semibold">
+                  {isApproved ? (
+                    <span className="text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-md inline-block">
+                      ✓ Digitally Signed (SHA-256)
+                    </span>
+                  ) : isRejected ? (
+                    <span className="text-rose-800 bg-rose-100/80 px-2 py-0.5 rounded-md inline-block">
+                      ✗ Rejected with Notice
+                    </span>
+                  ) : isUnderReview ? (
+                    <span className="text-blue-800 bg-blue-100/80 px-2 py-0.5 rounded-md inline-block">
+                      ● In GATC Review Queue
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">Pending Field Inspection</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Step 4: Certificate Issued */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  isApproved
+                    ? 'bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-400/30'
+                    : isRejected
+                    ? 'bg-rose-50/50 border-rose-200'
+                    : 'bg-slate-50 border-slate-200 opacity-60'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Step 4
+                  </span>
+                  {isApproved ? (
+                    <QrCode className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <FileBadge className="w-4 h-4 text-slate-400" />
+                  )}
+                </div>
+                <div className="font-extrabold text-slate-900 text-sm mt-1">
+                  4. Certificate Issued
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Schedule IX Form V certificate unlocked with live verifiable QR code.
+                </p>
+                <div className="mt-2 text-[10px] font-semibold">
+                  {isApproved ? (
+                    <button
+                      onClick={() => setIsCertificateOpen(true)}
+                      className="text-emerald-800 bg-amber-300 hover:bg-amber-400 px-2.5 py-1 rounded-md inline-flex items-center gap-1 font-bold cursor-pointer"
+                    >
+                      <QrCode className="w-3 h-3" />
+                      <span>Download QR</span>
+                    </button>
+                  ) : isRejected ? (
+                    <span className="text-rose-700">Rectification Needed</span>
+                  ) : (
+                    <span className="text-slate-400">Locked</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Status Explanation Details */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs pt-2">
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
               <span className="text-[10px] font-bold uppercase text-slate-400 block">Current Stage</span>
               <div className="font-bold text-slate-900 text-xs sm:text-sm">
-                {isApproved ? 'Statutory Verification Complete' : 'Physical Field Inspection Pending'}
+                {isApproved
+                  ? 'Certificate Issued & Stamped'
+                  : isRejected
+                  ? 'Deficiency Notice Issued'
+                  : isUnderReview
+                  ? 'Awaiting GATC Digital Signature'
+                  : 'Physical Field Inspection Pending'}
               </div>
               <p className="text-[11px] text-slate-500">
                 {isApproved
-                  ? 'Officer has inspected calibration, approved tolerances, and affixed security hologram seal.'
-                  : 'Assigned LMO Officer will visit your shop location to calibrate the instrument and take geo-tagged proof.'}
+                  ? 'GATC has validated all calibration observations, applied cryptographic SHA-256 signature, and issued certificate.'
+                  : isRejected
+                  ? 'GATC identified a discrepancy during review. Please rectify and click Re-Apply above.'
+                  : isUnderReview
+                  ? 'LMO officer has completed physical inspection and uploaded photo + GPS. Waiting for GATC signature.'
+                  : 'Assigned LMO Officer will visit your shop location to calibrate the instrument and capture geo-tagged proof.'}
               </p>
             </div>
 
@@ -349,7 +639,7 @@ export default function TraderDashboardPage() {
                 <span>Live Supabase Channel Active</span>
               </div>
               <p className="text-[11px] text-slate-500">
-                When the LMO officer approves the test on their Flutter app, this screen updates instantly without refresh.
+                When the LMO officer or GATC updates the record, this stepper and certificate unlock dynamically.
               </p>
             </div>
           </div>
