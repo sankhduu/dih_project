@@ -29,15 +29,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static const Color bgSlate = Color(0xFFF8FAFC);
   static const Color amberPending = Color(0xFFD97706);
 
-  List<Map<String, dynamic>> _traders = [];
-  bool _isLoading = true;
-  String? _errorMessage;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
 
   @override
   void initState() {
     super.initState();
-    _fetchTraders();
     // Auto-Sync on Dashboard: Check and sync cached offline approvals when loaded
     _checkAndSyncOfflineApprovals();
 
@@ -55,6 +51,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void dispose() {
     _connectivitySub?.cancel();
     super.dispose();
+  }
+
+  /// 1. Identify the Officer's District based on logged-in auth email
+  String _getOfficerDistrict() {
+    final userEmail = Supabase.instance.client.auth.currentUser?.email ?? widget.officerEmail;
+    final emailLower = userEmail.toLowerCase();
+
+    if (emailLower.contains('hisar')) {
+      return 'Hisar';
+    } else if (emailLower.contains('rohtak')) {
+      return 'Rohtak';
+    }
+
+    if (widget.district.toLowerCase().contains('hisar')) {
+      return 'Hisar';
+    }
+    return 'Rohtak';
+  }
+
+  String _getOfficerEmail() {
+    return Supabase.instance.client.auth.currentUser?.email ?? widget.officerEmail;
   }
 
   /// Background check on dashboard load:
@@ -86,7 +103,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               'updated_at': DateTime.now().toIso8601String(),
               'photo_url': item['photo_path'] ?? item['photo_url'],
               'checklist_confirmed': true,
-              'lmo_id': item['lmo_id'] ?? widget.officerEmail,
+              'lmo_id': item['lmo_id'] ?? _getOfficerEmail(),
             }).eq('id', traderId);
 
             syncedCount++;
@@ -115,192 +132,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               duration: Duration(seconds: 4),
             ),
           );
-          _fetchTraders();
         }
       }
     } catch (e) {
       debugPrint('Offline auto-sync check error: $e');
-    }
-  }
-
-  /// Query Supabase traders_list table with required filters:
-  /// status = 'Pending' AND district = logged-in officer's area
-  /// status = 'Pending_Inspection' (or legacy 'Pending') AND district = logged-in officer's area
-  Future<void> _fetchTraders() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final supabase = Supabase.instance.client;
-
-      // Crucial Query Filter: status = 'Pending_Inspection' or legacy 'Pending' AND district = widget.district
-      final List<dynamic> response = await supabase
-          .from('traders_list')
-          .select()
-          .inFilter('status', ['Pending_Inspection', 'Pending'])
-          .eq('district', widget.district)
-          .order('id', ascending: true);
-
-      final List<Map<String, dynamic>> fetched = List<Map<String, dynamic>>.from(response);
-
-      // Filter out any traders that were approved offline and waiting in local queue
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final List<String>? offlineQueue = prefs.getStringList('offline_pending_approvals');
-      if (offlineQueue != null && offlineQueue.isNotEmpty) {
-        final Set<String> offlineApprovedIds = offlineQueue.map((raw) {
-          try {
-            return (jsonDecode(raw)['id'] ?? '').toString();
-          } catch (_) {
-            return '';
-          }
-        }).toSet();
-        fetched.removeWhere((item) => offlineApprovedIds.contains(item['id'].toString()));
-      }
-
-      if (mounted) {
-        setState(() {
-          _traders = fetched;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Supabase fetch error or table uninitialized: $e');
-
-      // If database query fails (e.g. table not created yet or offline),
-      // provide realistic district-matched fallback data so hackathon demo never fails!
-      final fallbackData = _getDistrictFallbackTraders(widget.district);
-
-      // Also filter out offline-approved shops from fallback data
-      try {
-        final SharedPreferences prefs = await SharedPreferences.getInstance();
-        final List<String>? offlineQueue = prefs.getStringList('offline_pending_approvals');
-        if (offlineQueue != null && offlineQueue.isNotEmpty) {
-          final Set<String> offlineApprovedIds = offlineQueue.map((raw) {
-            try {
-              return (jsonDecode(raw)['id'] ?? '').toString();
-            } catch (_) {
-              return '';
-            }
-          }).toSet();
-          fallbackData.removeWhere((item) => offlineApprovedIds.contains(item['id'].toString()));
-        }
-      } catch (_) {}
-
-      if (mounted) {
-        setState(() {
-          _traders = fallbackData;
-          _isLoading = false;
-          // Only show subtle notice if table was not found
-          if (e.toString().contains('PGRST205') || e.toString().contains('schema cache')) {
-            _errorMessage = 'Note: Using local queue. (Run SQL script in Supabase to sync live)';
-          }
-        });
-      }
-    }
-  }
-
-  /// District-specific fallback pending inspection traders
-  List<Map<String, dynamic>> _getDistrictFallbackTraders(String district) {
-    if (district.toLowerCase().contains('hisar')) {
-      return [
-        {
-          'id': 'HIS-TR-101',
-          'shop_name': 'Hisar Agro Mill & Grain Store',
-          'owner_name': 'Suresh Chand Bishnoi',
-          'license_number': 'HR-LMO-HIS-2026-081',
-          'district': 'Hisar',
-          'status': 'Pending',
-          'status': 'Pending_Inspection',
-          'address': 'Shop 14, Anaj Mandi, Hisar, Haryana - 125001',
-          'instrument_type': 'Platform Weighing Scale (500 kg)',
-          'capacity': '500 kg / e=50g',
-          'make_model': 'Avery Weight-Tronix AV-500',
-        },
-        {
-          'id': 'HIS-TR-102',
-          'shop_name': 'Rajdhani Sweets & Dairy',
-          'owner_name': 'Sunil Kumar',
-          'license_number': 'HR-LMO-HIS-2026-119',
-          'district': 'Hisar',
-          'status': 'Pending',
-          'status': 'Pending_Inspection',
-          'address': 'Plot 4, Urban Estate II, Hisar - 125005',
-          'instrument_type': 'Electronic Retail Counter Scale (30 kg)',
-          'capacity': '30 kg / e=2g',
-          'make_model': 'Essae Teraoka DS-215',
-        },
-        {
-          'id': 'HIS-TR-103',
-          'shop_name': 'Jindal Steel Hardware & Fasteners',
-          'owner_name': 'Praveen Jindal',
-          'license_number': 'HR-LMO-HIS-2026-144',
-          'district': 'Hisar',
-          'status': 'Pending',
-          'status': 'Pending_Inspection',
-          'address': 'G.T. Road, Near Model Town, Hisar - 125001',
-          'instrument_type': 'Heavy Duty Platform Scale (1000 kg)',
-          'capacity': '1000 kg / e=100g',
-          'make_model': 'Citizen Scales HD-1T',
-        },
-      ];
-    } else {
-      // Default: Rohtak District pending traders
-      return [
-        {
-          'id': 'ROH-TR-001',
-          'shop_name': 'Sharma Kirana & General Store',
-          'owner_name': 'Ramesh Kumar Sharma',
-          'license_number': 'HR-LMO-ROH-2026-042',
-          'district': 'Rohtak',
-          'status': 'Pending',
-          'status': 'Pending_Inspection',
-          'address': 'Booth 12, Main Market, Model Town, Rohtak - 124001',
-          'instrument_type': 'Electronic Tabletop Scale (30 kg Class III)',
-          'capacity': '30 kg / e=2g',
-          'make_model': 'Essae DS-852 Tabletop',
-        },
-        {
-          'id': 'ROH-TR-002',
-          'shop_name': 'Haryana Gold & Diamond Jewelers',
-          'owner_name': 'Vikram Soni',
-          'license_number': 'HR-LMO-ROH-2026-057',
-          'district': 'Rohtak',
-          'status': 'Pending',
-          'status': 'Pending_Inspection',
-          'address': 'Sarafa Bazar, Near Quilla Mohalla, Rohtak - 124001',
-          'instrument_type': 'High Precision Gold Balance (Class II)',
-          'capacity': '600 g / e=0.01g',
-          'make_model': 'Sartorius Gold Series GS-600',
-        },
-        {
-          'id': 'ROH-TR-003',
-          'shop_name': 'Kisan Krishi Agro Mandi Depot',
-          'owner_name': 'Dharmender Hooda',
-          'license_number': 'HR-LMO-ROH-2026-093',
-          'district': 'Rohtak',
-          'status': 'Pending',
-          'status': 'Pending_Inspection',
-          'address': 'Shed No. 7, New Grain Market, Rohtak - 124001',
-          'instrument_type': 'Mechanical & Digital Steelyard Platform Scale',
-          'capacity': '300 kg / e=50g',
-          'make_model': 'Crown Weighing CW-300',
-        },
-        {
-          'id': 'ROH-TR-004',
-          'shop_name': 'Delhi Bypass Petrol & Diesel Fuel Station',
-          'owner_name': 'Baljeet Singh',
-          'license_number': 'HR-LMO-ROH-2026-112',
-          'district': 'Rohtak',
-          'status': 'Pending',
-          'status': 'Pending_Inspection',
-          'address': 'NH-9 Delhi Road, Rohtak - 124021',
-          'instrument_type': 'Fuel Dispensing Unit (Flow Meter)',
-          'capacity': '50 L/min standard flow',
-          'make_model': 'Tokheim Quantium 510',
-        },
-      ];
     }
   }
 
@@ -317,7 +152,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: primaryNavy, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryNavy,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Logout'),
           ),
         ],
@@ -339,44 +177,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  void _openInspectionScreen(Map<String, dynamic> trader) async {
+  void _openInspectionScreen(Map<String, dynamic> trader, String officerEmail) async {
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (context) => InspectionScreen(trader: trader),
         builder: (context) => InspectionScreen(
           trader: trader,
-          officerEmail: widget.officerEmail,
+          officerEmail: officerEmail,
         ),
       ),
     );
 
     if (!mounted) return;
 
-    // If approved, refresh list to remove the approved shop
-    // If submitted, refresh list to remove the forwarded shop
     if (result == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '✅ Inspection certified for "${trader['shop_name'] ?? trader['trader_name']}". Queue updated.',
-            'Inspection forwarded to GATC for "${trader['shop_name'] ?? trader['trader_name']}". Queue updated.',
+            'Inspection forwarded to GATC for "${trader['shop_name'] ?? trader['trader_name'] ?? 'Application #${trader['id']}'}".',
           ),
           backgroundColor: emeraldGreen,
           duration: const Duration(seconds: 3),
         ),
       );
-      // Remove from local list immediately and trigger refetch
-      setState(() {
-        _traders.removeWhere((item) => item['id'] == trader['id']);
-      });
-      _fetchTraders();
       _checkAndSyncOfflineApprovals();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final officerDistrict = _getOfficerDistrict();
+    final officerEmail = _getOfficerEmail();
+
     return Scaffold(
       backgroundColor: bgSlate,
       appBar: AppBar(
@@ -391,7 +223,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const Icon(Icons.shield, color: accentGold, size: 16),
                 const SizedBox(width: 6),
                 Text(
-                  '${widget.district} LMO Inspection Queue',
+                  '$officerDistrict LMO Inspection Queue',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -401,7 +233,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             Text(
-              'Officer: ${widget.officerEmail}',
+              'Officer: $officerEmail',
               style: const TextStyle(
                 fontSize: 11,
                 color: Colors.white70,
@@ -426,7 +258,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const Icon(Icons.location_on, color: accentGold, size: 14),
                 const SizedBox(width: 4),
                 Text(
-                  widget.district,
+                  officerDistrict,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 12,
@@ -435,12 +267,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ],
             ),
-          ),
-          // Refresh Button
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            tooltip: 'Refresh Queue',
-            onPressed: _fetchTraders,
           ),
           // Logout Button
           IconButton(
@@ -504,130 +330,150 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: amberPending.withValues(alpha: 0.15),
+                    color: const Color(0xFFE0F2FE),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: amberPending.withValues(alpha: 0.3)),
+                    border: Border.all(color: const Color(0xFFBAE6FD)),
                   ),
-                  child: Text(
-                    '${_traders.length} Pending',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: amberPending,
-                    ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.sync, size: 12, color: Color(0xFF0369A1)),
+                      SizedBox(width: 4),
+                      Text(
+                        'Live Supabase',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0369A1),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
 
-          // Optional Notice Banner
-          if (_errorMessage != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              color: Colors.blue.shade50,
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _errorMessage!,
-                      style: TextStyle(fontSize: 11, color: Colors.blue.shade900),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          // Main Trader List
+          // 2. Fetch Live Data from Supabase with StreamBuilder
           Expanded(
-            child: _isLoading
-                ? const Center(
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: Supabase.instance.client
+                  .from('traders_list')
+                  .stream(primaryKey: ['id'])
+                  .eq('status', 'Pending_Inspection')
+                  .eq('district', officerDistrict),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         CircularProgressIndicator(color: primaryNavy),
                         SizedBox(height: 12),
                         Text(
-                          'Fetching shops from Supabase traders_list...',
+                          'Connecting to live Supabase inspection queue...',
                           style: TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                       ],
                     ),
-                  )
-                : _traders.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32.0),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.shade50,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(Icons.check_circle_outline, size: 48, color: Colors.green.shade600),
-                              ),
-                              const SizedBox(height: 16),
-                              const Text(
-                                'All Inspections Complete!',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: primaryNavy,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'No pending shops found in district "${widget.district}".\nAll registered weighing balances are certified.',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(fontSize: 12, color: Colors.black54),
-                              ),
-                              const SizedBox(height: 20),
-                              OutlinedButton.icon(
-                                onPressed: _fetchTraders,
-                                icon: const Icon(Icons.refresh, size: 16),
-                                label: const Text('Refresh Central Queue'),
-                              ),
-                            ],
+                  );
+                }
+
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Error loading applications from Supabase:\n${snapshot.error}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 13, color: Colors.black87),
                           ),
-                        ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _fetchTraders,
-                        onRefresh: () async {
-                          await _checkAndSyncOfflineApprovals();
-                          await _fetchTraders();
-                        },
-                        color: primaryNavy,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _traders.length,
-                          separatorBuilder: (context, index) => const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final trader = _traders[index];
-                            return _buildTraderCard(trader);
-                          },
-                        ),
+                          const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.refresh, size: 16),
+                            label: const Text('Retry Connection'),
+                          ),
+                        ],
                       ),
+                    ),
+                  );
+                }
+
+                final traders = snapshot.data ?? [];
+
+                if (traders.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.check_circle_outline, size: 48, color: Colors.green.shade600),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'All Inspections Complete!',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: primaryNavy,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'No pending applications found in district "$officerDistrict".\nLive Supabase queue is up to date.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 12, color: Colors.black54),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: traders.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final trader = traders[index];
+                    return _buildTraderCard(trader, officerDistrict, officerEmail);
+                  },
+                );
+              },
+            ),
           ),
         ],
       ),
     );
   }
 
-  /// Clean Material 3 Card displaying Shop Details from Supabase
-  Widget _buildTraderCard(Map<String, dynamic> trader) {
+  /// 3. Bind Live Supabase Database Fields to UI Material Cards
+  Widget _buildTraderCard(
+    Map<String, dynamic> trader,
+    String officerDistrict,
+    String officerEmail,
+  ) {
+    // Map actual database fields from traders_list row:
     final shopName = (trader['shop_name'] ?? trader['trader_name'] ?? 'Unknown Commercial Establishment').toString();
+    final address = (trader['address'] ?? '$officerDistrict, Haryana').toString();
+    final instrument = (trader['instrument'] ?? trader['instrument_type'] ?? 'Weighing Instrument').toString();
     final ownerName = (trader['owner_name'] ?? 'Proprietor').toString();
-    final licenseNumber = (trader['license_number'] ?? trader['id'] ?? 'LMO-2026').toString();
-    final address = (trader['address'] ?? '${widget.district}, Haryana').toString();
-    final instrumentType = (trader['instrument_type'] ?? 'Weighing Instrument').toString();
-    final status = (trader['status'] ?? 'Pending').toString();
+    final licenseNumber = (trader['license_number'] ?? 'APP-${trader['id']}').toString();
     final status = (trader['status'] ?? 'Pending_Inspection').toString();
     final displayStatus = status.replaceAll('_', ' ');
 
@@ -640,7 +486,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       color: Colors.white,
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => _openInspectionScreen(trader),
+        // Pass specific row's exact 'id' and full row payload to InspectionScreen
+        onTap: () => _openInspectionScreen(trader, officerEmail),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
@@ -700,7 +547,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         const SizedBox(width: 5),
                         Text(
-                          status,
                           displayStatus,
                           style: const TextStyle(
                             color: Color(0xFF92400E),
@@ -725,7 +571,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'INSTRUMENT REGISTERED',
+                          'INSTRUMENT',
                           style: TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.bold,
@@ -735,7 +581,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          instrumentType,
+                          instrument,
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -752,7 +598,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'REGISTRATION / LIC NO.',
+                          'APPLICATION / LIC NO.',
                           style: TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.bold,

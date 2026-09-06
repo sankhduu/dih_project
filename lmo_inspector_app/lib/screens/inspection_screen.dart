@@ -11,7 +11,6 @@ class InspectionScreen extends StatefulWidget {
   final Map<String, dynamic> trader;
   final String? officerEmail;
 
-  const InspectionScreen({super.key, required this.trader});
   const InspectionScreen({
     super.key,
     required this.trader,
@@ -29,7 +28,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
   static const Color emeraldGreen = Color(0xFF059669);
   static const Color bgSlate = Color(0xFFF8FAFC);
 
-  // Five Statutory Verification Checks required by User:
   // Five Statutory Verification Checks required:
   // 1. Scale is placed on a flat, stable surface.
   // 2. Zero error is checked and calibrated.
@@ -42,8 +40,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
   bool _checkDisplayTamperFree = false;
   bool _checkGpsLocationMatches = false;
 
-  // Photo State Placeholder
-  bool _isPhotoCaptured = false;
   // Live Camera & Photo State
   File? _capturedImageFile;
   String? _capturedImagePath;
@@ -71,16 +67,12 @@ class _InspectionScreenState extends State<InspectionScreen> {
       _checkManufacturerSeal = true;
       _checkDisplayTamperFree = true;
       _checkGpsLocationMatches = true;
-      if (!_isPhotoCaptured) {
-        _isPhotoCaptured = true;
       if (_capturedImageFile == null) {
         _capturedPhotoTimestamp = DateTime.now().toString().substring(0, 19);
       }
     });
   }
 
-  /// Take Live Photo Button Action / Placeholder
-  void _handleTakeLivePhoto() {
   /// Opens the device camera using image_picker and saves the captured photo
   Future<void> _handleTakeLivePhoto() async {
     final ImagePicker picker = ImagePicker();
@@ -143,24 +135,9 @@ class _InspectionScreenState extends State<InspectionScreen> {
   /// Fetches exact GPS coordinates using geolocator
   Future<Position?> _fetchExactCoordinates() async {
     setState(() {
-      _isPhotoCaptured = true;
-      _capturedPhotoTimestamp = DateTime.now().toString().substring(0, 19);
       _isLocating = true;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.camera_alt, color: Colors.white, size: 18),
-            SizedBox(width: 8),
-            Text('📸 Live verification photo geo-tagged and captured.'),
-          ],
-        ),
-        backgroundColor: primaryNavy,
-        duration: Duration(seconds: 2),
-      ),
-    );
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -214,7 +191,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
   }
 
   /// Large Green "Approve & Certify" Button Handler
-  /// Updates the status column in the traders_list table to 'Approved'
   /// Implements online sync to Supabase and offline sync via SharedPreferences
   Future<void> _handleApproveAndCertify() async {
     if (!_areAllChecksPassed) {
@@ -253,8 +229,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
       _isSubmitting = true;
     });
 
-    final traderId = widget.trader['id'] ?? widget.trader['license_number'];
-    bool dbUpdated = false;
     // 1. Fetch exact GPS coordinates
     await _fetchExactCoordinates();
 
@@ -269,34 +243,17 @@ class _InspectionScreenState extends State<InspectionScreen> {
     // 2. Check network connectivity with connectivity_plus
     bool isConnected = false;
     try {
-      final supabase = Supabase.instance.client;
       final List<ConnectivityResult> connectivityResults = await Connectivity().checkConnectivity();
       isConnected = connectivityResults.any((result) => result != ConnectivityResult.none);
     } catch (e) {
       debugPrint('Connectivity check note: $e');
     }
 
-      // Update the status column in traders_list table to 'Approved' for this specific trader
-      await supabase
-          .from('traders_list')
-          .update({'status': 'Approved'})
-          .eq('id', traderId);
     bool syncedOnline = false;
 
-      dbUpdated = true;
-      debugPrint('Supabase traders_list updated to Approved for ID: $traderId');
-    } catch (e) {
-      debugPrint('Supabase database update notice: $e');
-      // If the ID column name varies or table is in local demo mode, attempt fallback match
     // 3. Online path: Update Supabase directly to Under_Review
     if (isConnected) {
       try {
-        if (widget.trader['license_number'] != null) {
-          await Supabase.instance.client
-              .from('traders_list')
-              .update({'status': 'Approved'})
-              .eq('license_number', widget.trader['license_number']);
-          dbUpdated = true;
         final supabase = Supabase.instance.client;
 
         await supabase.from('traders_list').update({
@@ -329,7 +286,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
             ),
           );
         }
-      } catch (_) {}
       } catch (e) {
         debugPrint('Online sync to Supabase failed or table not found, falling back to offline: $e');
         syncedOnline = false;
@@ -396,7 +352,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
       _isSubmitting = false;
     });
 
-    // Show Statutory Certification Dialog
     // 5. Official Verification Forwarded Dialog
     await showDialog(
       context: context,
@@ -411,16 +366,13 @@ class _InspectionScreenState extends State<InspectionScreen> {
                 color: emeraldGreen.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.verified, color: emeraldGreen, size: 28),
               child: const Icon(Icons.send_rounded, color: emeraldGreen, size: 28),
             ),
             const SizedBox(width: 12),
             const Expanded(
               child: Text(
-                'Approved & Certified',
                 'Inspection Forwarded to GATC',
                 style: TextStyle(
-                  fontSize: 18,
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
                   color: primaryNavy,
@@ -434,7 +386,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Statutory Verification Certificate (Form VIII) has been issued under Section 24 of the Legal Metrology Act, 2009.',
               'Statutory physical inspection (5-point checklist, GPS coordinates, and photo proof) has been recorded and forwarded to GATC for cryptographic digital signing.',
               style: TextStyle(fontSize: 13, color: Colors.black87),
             ),
@@ -453,20 +404,16 @@ class _InspectionScreenState extends State<InspectionScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'STATUS:',
                         'LIFECYCLE STATUS:',
                         style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey),
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: emeraldGreen.withValues(alpha: 0.15),
                           color: accentGold.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Text(
-                          'Approved',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: emeraldGreen),
                           'Under_Review',
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: accentGold),
                         ),
@@ -475,23 +422,13 @@ class _InspectionScreenState extends State<InspectionScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Shop: ${widget.trader['shop_name'] ?? widget.trader['trader_name']}',
                     'Shop: $shopName',
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: primaryNavy),
                   ),
                   Text(
-                    'License: ${widget.trader['license_number'] ?? widget.trader['id']}',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
                     'GPS: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
                     style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey.shade700),
                   ),
-                  if (dbUpdated) ...[
-                    const SizedBox(height: 4),
-                    const Text(
-                      '✓ Synchronized with Supabase traders_list table',
-                      style: TextStyle(fontSize: 10, color: emeraldGreen, fontWeight: FontWeight.bold),
-                    ),
-                  ],
                   const SizedBox(height: 4),
                   Row(
                     children: [
@@ -524,7 +461,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
             style: ElevatedButton.styleFrom(
-              backgroundColor: emeraldGreen,
               backgroundColor: primaryNavy,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -536,7 +472,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
     );
 
     if (mounted) {
-      // Pop back to Dashboard with true to trigger list refresh
       Navigator.pop(context, true);
     }
   }
@@ -878,7 +813,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
 
                   const SizedBox(height: 20),
 
-                  // Placeholder: Take Live Photo Button
                   // Camera & Photo Proof Section
                   Card(
                     elevation: 1,
@@ -913,23 +847,17 @@ class _InspectionScreenState extends State<InspectionScreen> {
                           ),
                           const SizedBox(height: 12),
 
-                          if (_isPhotoCaptured) ...[
                           // Small thumbnail of captured image if present
                           if (_capturedImageFile != null && _capturedImageFile!.existsSync()) ...[
                             Container(
-                              height: 120,
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: primaryNavy.withValues(alpha: 0.05),
-                                borderRadius: BorderRadius.circular(8),
                                 color: Colors.grey.shade50,
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(color: emeraldGreen.withValues(alpha: 0.5)),
                               ),
-                              child: Stack(
                               child: Row(
                                 children: [
-                                  Center(
                                   // Small Thumbnail
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(8),
@@ -943,18 +871,8 @@ class _InspectionScreenState extends State<InspectionScreen> {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        const Icon(Icons.check_circle, color: emeraldGreen, size: 36),
-                                        const SizedBox(height: 6),
-                                        const Text(
-                                          'Geo-Tagged Live Photo Captured ✓',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: emeraldGreen,
-                                          ),
                                         const Row(
                                           children: [
                                             Icon(Icons.check_circle, color: emeraldGreen, size: 16),
@@ -971,7 +889,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          'Stamped: $_capturedPhotoTimestamp',
                                           'Captured: $_capturedPhotoTimestamp',
                                           style: const TextStyle(fontSize: 10, color: Colors.black54),
                                         ),
@@ -989,13 +906,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
                                       ],
                                     ),
                                   ),
-                                  Positioned(
-                                    top: 8,
-                                    right: 8,
-                                    child: IconButton(
-                                      icon: const Icon(Icons.refresh, size: 18),
-                                      onPressed: _handleTakeLivePhoto,
-                                      tooltip: 'Retake Photo',
                                   IconButton(
                                     icon: const Icon(Icons.refresh, size: 20, color: primaryNavy),
                                     onPressed: _handleTakeLivePhoto,
@@ -1026,22 +936,18 @@ class _InspectionScreenState extends State<InspectionScreen> {
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 8),
                             const SizedBox(height: 10),
                           ],
 
-                          // 'Take Live Photo' button placeholder
                           // 'Take Live Photo' button opening camera with image_picker
                           OutlinedButton.icon(
                             onPressed: _handleTakeLivePhoto,
                             icon: Icon(
-                              _isPhotoCaptured ? Icons.camera_alt_outlined : Icons.camera_alt,
                               _capturedImageFile != null ? Icons.camera_alt_outlined : Icons.camera_alt,
                               color: primaryNavy,
                               size: 18,
                             ),
                             label: Text(
-                              _isPhotoCaptured ? 'Retake Live Photo' : 'Take Live Photo',
                               _capturedImageFile != null ? 'Retake Live Photo' : 'Take Live Photo',
                               style: const TextStyle(
                                 fontSize: 13,
@@ -1064,7 +970,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
 
                   const SizedBox(height: 24),
 
-                  // Large Green "Approve & Certify" Button
                   // Submit Inspection to GATC Button
                   ElevatedButton(
                     onPressed: _isSubmitting ? null : _handleApproveAndCertify,
@@ -1079,13 +984,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
                       elevation: 3,
                     ),
                     child: _isSubmitting
-                        ? const SizedBox(
-                            height: 22,
-                            width: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Colors.white,
-                            ),
                         ? Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -1107,11 +1005,9 @@ class _InspectionScreenState extends State<InspectionScreen> {
                         : const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.verified, size: 22),
                               Icon(Icons.send_rounded, size: 22),
                               SizedBox(width: 10),
                               Text(
-                                'Approve & Certify',
                                 'Submit Inspection to GATC',
                                 style: TextStyle(
                                   fontSize: 16,
