@@ -17,7 +17,9 @@ import {
 export interface TraderRecord {
   id?: string;
   shop_name: string;
+  trader_name?: string;
   owner_name?: string;
+  trader_email?: string;
   license_number: string;
   district?: string;
   status?: string;

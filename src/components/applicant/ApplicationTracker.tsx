@@ -23,9 +23,28 @@ import Link from 'next/link';
 // Fallback seed data if database is empty or offline
 const FALLBACK_TRADERS: TraderRecord[] = [
   {
+    id: 'MOH-TR-001',
+    shop_name: 'Mohan Kirana Store',
+    trader_name: 'Mohan Kirana Store',
+    owner_name: 'Mohan Lal',
+    trader_email: 'trader@demo.com',
+    license_number: 'HR-LMO-ROH-2026-089',
+    district: 'Rohtak',
+    status: 'Pending_Inspection',
+    address: 'Shop No. 5, Main Market, Model Town, Rohtak - 124001',
+    instrument_type: 'Electronic Counter Scale (Class III)',
+    capacity: '30 kg (e = 5 g)',
+    latitude: 28.8955,
+    longitude: 76.6066,
+    created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+    updated_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+  },
+  {
     id: 'ROH-TR-001',
     shop_name: 'Sharma Kirana & General Store',
+    trader_name: 'Sharma Kirana & General Store',
     owner_name: 'Ramesh Kumar Sharma',
+    trader_email: 'ramesh.sharma@example.com',
     license_number: 'HR-LMO-ROH-2026-042',
     district: 'Rohtak',
     status: 'Pending_Inspection',
@@ -40,7 +59,9 @@ const FALLBACK_TRADERS: TraderRecord[] = [
   {
     id: 'HIS-TR-101',
     shop_name: 'Hisar Agro Mill & Grain Store',
+    trader_name: 'Hisar Agro Mill & Grain Store',
     owner_name: 'Suresh Chand Bishnoi',
+    trader_email: 'suresh.hisar@example.com',
     license_number: 'HR-LMO-HIS-2026-081',
     district: 'Hisar',
     status: 'Under_Review',
@@ -57,7 +78,9 @@ const FALLBACK_TRADERS: TraderRecord[] = [
   {
     id: 'ROH-TR-002',
     shop_name: 'Haryana Gold & Diamond Jewelers',
+    trader_name: 'Haryana Gold & Diamond Jewelers',
     owner_name: 'Vikram Soni',
+    trader_email: 'vikram.soni@example.com',
     license_number: 'HR-LMO-ROH-2026-057',
     district: 'Rohtak',
     status: 'Approved',
@@ -83,14 +106,34 @@ export function ApplicationTracker() {
   const [isCertModalOpen, setIsCertModalOpen] = useState<boolean>(false);
   const [isReapplying, setIsReapplying] = useState<boolean>(false);
 
-  // Fetch all applications from Supabase traders_list (latest first)
+  // Fetch all applications from Supabase traders_list (strictly filtered by trader_email)
   const fetchApplications = async () => {
     try {
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from('traders_list')
-        .select('*')
-        .order('created_at', { ascending: false });
+
+      // 1. Fetch currently logged-in user's email
+      let userEmail = currentUser.email || '';
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user?.email) {
+          userEmail = authData.user.email;
+        } else {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session?.user?.email) {
+            userEmail = sessionData.session.user.email;
+          }
+        }
+      } catch (authErr) {
+        console.warn('Auth check error in tracker:', authErr);
+      }
+
+      // 2. Query strictly filtered by trader_email
+      let query = supabase.from('traders_list').select('*');
+      if (userEmail) {
+        query = query.eq('trader_email', userEmail);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (data && data.length > 0 && !error) {
         setTraders(data as TraderRecord[]);
@@ -100,8 +143,13 @@ export function ApplicationTracker() {
           return (matched || data[0]) as TraderRecord;
         });
       } else {
-        setTraders(FALLBACK_TRADERS);
-        setSelectedApp(FALLBACK_TRADERS[0]);
+        // Filter fallback by user email if available
+        const matchedFallbacks = userEmail
+          ? FALLBACK_TRADERS.filter((t) => t.trader_email === userEmail)
+          : FALLBACK_TRADERS;
+        const initialList = matchedFallbacks.length > 0 ? matchedFallbacks : FALLBACK_TRADERS;
+        setTraders(initialList);
+        setSelectedApp(initialList[0]);
       }
     } catch (err) {
       console.warn('Error querying traders_list for tracker:', err);
@@ -121,9 +169,24 @@ export function ApplicationTracker() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'traders_list' },
-        (payload) => {
+        async (payload) => {
           const updatedRow = (payload.new || payload.old) as TraderRecord;
           if (!updatedRow) return;
+
+          let activeEmail = currentUser.email || '';
+          try {
+            const { data: authData } = await supabase.auth.getUser();
+            if (authData?.user?.email) {
+              activeEmail = authData.user.email;
+            }
+          } catch {
+            // ignore
+          }
+
+          // If active user is specified and row has trader_email not matching active user, ignore
+          if (activeEmail && updatedRow.trader_email && updatedRow.trader_email !== activeEmail) {
+            return;
+          }
 
           setTraders((prev) => {
             if (payload.eventType === 'INSERT') {
@@ -152,7 +215,7 @@ export function ApplicationTracker() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [currentUser.email]);
 
   // Re-apply when rejected
   const handleReapply = async (appId?: string) => {

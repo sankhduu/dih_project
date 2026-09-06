@@ -67,6 +67,7 @@ export default function ApplyPage() {
     ownerName: string;
     instrumentType: string;
     district?: string;
+    traderEmail?: string;
     createdAt: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -112,6 +113,22 @@ export default function ApplyPage() {
 
     setIsSubmitting(true);
 
+    // 1. Fetch currently logged-in user's session
+    let userEmail = currentUser.email || 'trader@demo.com';
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.email) {
+        userEmail = authData.user.email;
+      } else {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.user?.email) {
+          userEmail = sessionData.session.user.email;
+        }
+      }
+    } catch (authErr) {
+      console.warn('Auth session check note:', authErr);
+    }
+
     // Generate authoritative license number matching district code
     const randomFiveDigits = Math.floor(10000 + Math.random() * 90000);
     const distPrefix = district.toUpperCase().substring(0, 3);
@@ -132,11 +149,12 @@ export default function ApplyPage() {
     const chosenLat = latitude ? parseFloat(latitude) : (defaultCoords[district]?.lat || 28.8955);
     const chosenLng = longitude ? parseFloat(longitude) : (defaultCoords[district]?.lng || 76.6066);
 
-    // Exact payload matching public.traders_list schema
+    // Exact payload matching public.traders_list schema with new trader_email column
     const supabasePayload = {
       shop_name: traderName.trim(),
       trader_name: traderName.trim(),
       owner_name: ownerName.trim(),
+      trader_email: userEmail, // Strictly linked to authenticated trader session
       license_number: generatedLicense,
       district: district, // Exact match: 'Hisar' or 'Rohtak'
       status: 'Pending_Inspection' as const, // Strictly exact string
@@ -173,6 +191,7 @@ export default function ApplyPage() {
         ownerName: finalData.owner_name || ownerName,
         instrumentType: finalData.instrument_type || instrumentType,
         district: finalData.district || district,
+        traderEmail: finalData.trader_email || userEmail,
         createdAt: new Date().toLocaleDateString('en-GB', {
           day: '2-digit',
           month: 'long',
@@ -189,6 +208,7 @@ export default function ApplyPage() {
         ownerName: ownerName,
         instrumentType: instrumentType,
         district: district,
+        traderEmail: userEmail,
         createdAt: new Date().toLocaleDateString('en-GB', {
           day: '2-digit',
           month: 'long',
@@ -538,6 +558,12 @@ export default function ApplyPage() {
                   <span className="text-slate-500 block text-[11px]">Instrument Type:</span>
                   <span className="font-bold text-slate-900">{submittedData.instrumentType}</span>
                 </div>
+                {submittedData.traderEmail && (
+                  <div className="col-span-2 pt-1 border-t border-slate-200/60 mt-1">
+                    <span className="text-slate-500 block text-[11px]">Trader Account:</span>
+                    <span className="font-mono text-slate-800 text-[11px] font-semibold">{submittedData.traderEmail}</span>
+                  </div>
+                )}
               </div>
             </div>
 

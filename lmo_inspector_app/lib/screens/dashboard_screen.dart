@@ -124,6 +124,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   /// Query Supabase traders_list table with required filters:
+  /// status = 'Pending' AND district = logged-in officer's area
   /// status = 'Pending_Inspection' (or legacy 'Pending') AND district = logged-in officer's area
   Future<void> _fetchTraders() async {
     setState(() {
@@ -134,7 +135,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final supabase = Supabase.instance.client;
 
-      // Crucial Query Filter: status = 'Pending_Inspection' AND district = widget.district
+      // Crucial Query Filter: status = 'Pending_Inspection' or legacy 'Pending' AND district = widget.district
       final List<dynamic> response = await supabase
           .from('traders_list')
           .select()
@@ -210,6 +211,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'owner_name': 'Suresh Chand Bishnoi',
           'license_number': 'HR-LMO-HIS-2026-081',
           'district': 'Hisar',
+          'status': 'Pending',
           'status': 'Pending_Inspection',
           'address': 'Shop 14, Anaj Mandi, Hisar, Haryana - 125001',
           'instrument_type': 'Platform Weighing Scale (500 kg)',
@@ -222,6 +224,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'owner_name': 'Sunil Kumar',
           'license_number': 'HR-LMO-HIS-2026-119',
           'district': 'Hisar',
+          'status': 'Pending',
           'status': 'Pending_Inspection',
           'address': 'Plot 4, Urban Estate II, Hisar - 125005',
           'instrument_type': 'Electronic Retail Counter Scale (30 kg)',
@@ -234,6 +237,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'owner_name': 'Praveen Jindal',
           'license_number': 'HR-LMO-HIS-2026-144',
           'district': 'Hisar',
+          'status': 'Pending',
           'status': 'Pending_Inspection',
           'address': 'G.T. Road, Near Model Town, Hisar - 125001',
           'instrument_type': 'Heavy Duty Platform Scale (1000 kg)',
@@ -250,6 +254,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'owner_name': 'Ramesh Kumar Sharma',
           'license_number': 'HR-LMO-ROH-2026-042',
           'district': 'Rohtak',
+          'status': 'Pending',
           'status': 'Pending_Inspection',
           'address': 'Booth 12, Main Market, Model Town, Rohtak - 124001',
           'instrument_type': 'Electronic Tabletop Scale (30 kg Class III)',
@@ -262,6 +267,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'owner_name': 'Vikram Soni',
           'license_number': 'HR-LMO-ROH-2026-057',
           'district': 'Rohtak',
+          'status': 'Pending',
           'status': 'Pending_Inspection',
           'address': 'Sarafa Bazar, Near Quilla Mohalla, Rohtak - 124001',
           'instrument_type': 'High Precision Gold Balance (Class II)',
@@ -274,6 +280,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'owner_name': 'Dharmender Hooda',
           'license_number': 'HR-LMO-ROH-2026-093',
           'district': 'Rohtak',
+          'status': 'Pending',
           'status': 'Pending_Inspection',
           'address': 'Shed No. 7, New Grain Market, Rohtak - 124001',
           'instrument_type': 'Mechanical & Digital Steelyard Platform Scale',
@@ -286,6 +293,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'owner_name': 'Baljeet Singh',
           'license_number': 'HR-LMO-ROH-2026-112',
           'district': 'Rohtak',
+          'status': 'Pending',
           'status': 'Pending_Inspection',
           'address': 'NH-9 Delhi Road, Rohtak - 124021',
           'instrument_type': 'Fuel Dispensing Unit (Flow Meter)',
@@ -335,6 +343,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
+        builder: (context) => InspectionScreen(trader: trader),
         builder: (context) => InspectionScreen(
           trader: trader,
           officerEmail: widget.officerEmail,
@@ -344,11 +353,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (!mounted) return;
 
+    // If approved, refresh list to remove the approved shop
     // If submitted, refresh list to remove the forwarded shop
     if (result == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
+            '✅ Inspection certified for "${trader['shop_name'] ?? trader['trader_name']}". Queue updated.',
             'Inspection forwarded to GATC for "${trader['shop_name'] ?? trader['trader_name']}". Queue updated.',
           ),
           backgroundColor: emeraldGreen,
@@ -587,6 +598,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       )
                     : RefreshIndicator(
+                        onRefresh: _fetchTraders,
                         onRefresh: () async {
                           await _checkAndSyncOfflineApprovals();
                           await _fetchTraders();
@@ -615,6 +627,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final licenseNumber = (trader['license_number'] ?? trader['id'] ?? 'LMO-2026').toString();
     final address = (trader['address'] ?? '${widget.district}, Haryana').toString();
     final instrumentType = (trader['instrument_type'] ?? 'Weighing Instrument').toString();
+    final status = (trader['status'] ?? 'Pending').toString();
     final status = (trader['status'] ?? 'Pending_Inspection').toString();
     final displayStatus = status.replaceAll('_', ' ');
 
@@ -687,6 +700,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         const SizedBox(width: 5),
                         Text(
+                          status,
                           displayStatus,
                           style: const TextStyle(
                             color: Color(0xFF92400E),

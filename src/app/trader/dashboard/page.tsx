@@ -27,15 +27,17 @@ import {
 } from 'lucide-react';
 
 const DEFAULT_TRADER_SHOP: TraderRecord = {
-  id: 'ROH-TR-001',
-  shop_name: 'Sharma Kirana & General Store',
-  owner_name: 'Ramesh Kumar Sharma',
-  license_number: 'HR-LMO-ROH-2026-042',
+  id: 'MOH-TR-001',
+  shop_name: 'Mohan Kirana Store',
+  trader_name: 'Mohan Kirana Store',
+  owner_name: 'Mohan Lal',
+  trader_email: 'trader@demo.com',
+  license_number: 'HR-LMO-ROH-2026-089',
   district: 'Rohtak',
   status: 'Pending_Inspection',
-  address: 'Booth 12, Main Market, Model Town, Rohtak - 124001',
-  instrument_type: 'Electronic Tabletop Scale (30 kg Class III)',
-  capacity: '30 kg / e=2g',
+  address: 'Shop No. 5, Main Market, Model Town, Rohtak - 124001',
+  instrument_type: 'Electronic Counter Scale (Class III)',
+  capacity: '30 kg (e = 5 g)',
   make_model: 'Essae DS-852 Tabletop',
   latitude: 28.8955,
   longitude: 76.6066,
@@ -109,19 +111,36 @@ export default function TraderDashboardPage() {
     checkTraderAuth();
   }, [router, currentUser.role, currentUser.email]);
 
-  // 2. Fetch Initial Trader Record from Supabase traders_list (latest submission first)
+  // 2. Fetch Initial Trader Record from Supabase traders_list (strictly filtered by trader_email)
   useEffect(() => {
     async function fetchTraderRecord() {
       try {
-        const { data, error } = await supabase
-          .from('traders_list')
-          .select('*')
+        let effectiveEmail = sessionEmail || currentUser.email || '';
+        if (!effectiveEmail) {
+          const { data: authData } = await supabase.auth.getUser();
+          if (authData?.user?.email) {
+            effectiveEmail = authData.user.email;
+          } else {
+            const { data: sessionData } = await supabase.auth.getSession();
+            if (sessionData?.session?.user?.email) {
+              effectiveEmail = sessionData.session.user.email;
+            }
+          }
+        }
+
+        let query = supabase.from('traders_list').select('*');
+        if (effectiveEmail) {
+          query = query.eq('trader_email', effectiveEmail);
+        }
+        const { data, error } = await query
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
         if (data && !error) {
           setTraderShop(data as TraderRecord);
+        } else if (effectiveEmail === 'trader@demo.com' || !effectiveEmail) {
+          setTraderShop(DEFAULT_TRADER_SHOP);
         }
       } catch (err) {
         console.warn('Error fetching trader record from Supabase:', err);
@@ -129,7 +148,7 @@ export default function TraderDashboardPage() {
     }
 
     fetchTraderRecord();
-  }, []);
+  }, [sessionEmail, currentUser.email]);
 
   // 3. Supabase Realtime Listener (Listening to LMO and GATC actions, and new Applications)
   useEffect(() => {
@@ -141,6 +160,11 @@ export default function TraderDashboardPage() {
         (payload) => {
           const updatedRow = (payload.new || payload.old) as TraderRecord;
           if (!updatedRow) return;
+
+          const targetEmail = sessionEmail || currentUser.email;
+          if (targetEmail && updatedRow.trader_email && updatedRow.trader_email !== targetEmail) {
+            return;
+          }
 
           setTraderShop((prev) => {
             // If this is a newly inserted application, immediately switch tracker to it
@@ -163,7 +187,7 @@ export default function TraderDashboardPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [sessionEmail, currentUser.email]);
 
   // Handler for Re-Applying when rejected
   const handleReapply = async () => {
@@ -218,7 +242,7 @@ export default function TraderDashboardPage() {
   );
 
   const displayEmail = sessionEmail || currentUser.email || 'trader@demo.com';
-  const displayName = currentUser.fullName || traderShop.owner_name || 'Ramesh Kumar (Proprietor)';
+  const displayName = currentUser.fullName || traderShop.owner_name || 'Mohan Lal (Proprietor)';
 
   const rawStatus = (traderShop.status || 'Pending_Inspection').toLowerCase();
   const isApproved = rawStatus === 'approved';
@@ -349,7 +373,7 @@ export default function TraderDashboardPage() {
                 <span>•</span>
                 <span className="flex items-center gap-1">
                   <Building2 className="w-3.5 h-3.5 text-slate-300" />
-                  <span>{traderShop.shop_name || currentUser.businessName || 'Sharma Kirana & General Store'}</span>
+                  <span>{traderShop.shop_name || currentUser.businessName || 'Mohan Kirana Store'}</span>
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1">
