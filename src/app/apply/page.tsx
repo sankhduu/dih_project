@@ -33,6 +33,7 @@ export default function ApplyPage() {
   const [instrumentType, setInstrumentType] = useState('Electronic Counter Scale (Class III)');
   const [capacity, setCapacity] = useState('30 kg (e = 5 g)');
   const [address, setAddress] = useState(currentUser.address || 'Shop No. 14, Main Market, Hauz Khas, New Delhi - 110016');
+  const [district, setDistrict] = useState('Rohtak');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
 
@@ -46,6 +47,9 @@ export default function ApplyPage() {
     }
     if (currentUser.address) {
       setAddress(currentUser.address);
+    }
+    if (currentUser.district) {
+      setDistrict(currentUser.district);
     }
   }, [currentUser]);
 
@@ -62,6 +66,7 @@ export default function ApplyPage() {
     traderName: string;
     ownerName: string;
     instrumentType: string;
+    district?: string;
     createdAt: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -107,66 +112,83 @@ export default function ApplyPage() {
 
     setIsSubmitting(true);
 
-    // Generate random 5-digit license number
+    // Generate authoritative license number matching district code
     const randomFiveDigits = Math.floor(10000 + Math.random() * 90000);
-    const generatedLicense = `LMO/2026/${randomFiveDigits}`;
+    const distPrefix = district.toUpperCase().substring(0, 3);
+    const generatedLicense = `HR-LMO-${distPrefix}-2026-${randomFiveDigits}`;
 
-    const payload = {
+    // Standard GPS coordinates per Haryana district
+    const defaultCoords: Record<string, { lat: number; lng: number }> = {
+      Hisar: { lat: 29.1492, lng: 75.7217 },
+      Rohtak: { lat: 28.8955, lng: 76.6066 },
+      Gurugram: { lat: 28.4595, lng: 77.0266 },
+      Faridabad: { lat: 28.4089, lng: 77.3178 },
+      Ambala: { lat: 30.3782, lng: 76.7767 },
+      Panipat: { lat: 29.3909, lng: 76.9635 },
+      Karnal: { lat: 29.6857, lng: 76.9905 },
+      Sonipat: { lat: 28.9931, lng: 77.0151 },
+    };
+
+    const chosenLat = latitude ? parseFloat(latitude) : (defaultCoords[district]?.lat || 28.8955);
+    const chosenLng = longitude ? parseFloat(longitude) : (defaultCoords[district]?.lng || 76.6066);
+
+    // Exact payload matching public.traders_list schema
+    const supabasePayload = {
+      shop_name: traderName.trim(),
       trader_name: traderName.trim(),
       owner_name: ownerName.trim(),
       license_number: generatedLicense,
+      district: district, // Exact match: 'Hisar' or 'Rohtak'
+      status: 'Pending_Inspection' as const, // Strictly exact string
+      address: address.trim() || `${district}, Haryana`,
       instrument_type: instrumentType,
-      latitude: latitude ? parseFloat(latitude) : 28.6139,
-      longitude: longitude ? parseFloat(longitude) : 77.2090,
-      inspection_status: 'Pending',
+      capacity: capacity.trim() || '30 kg (e = 5 g)',
+      make_model: `${instrumentType} - Standard Model`,
+      latitude: chosenLat,
+      longitude: chosenLng,
+      checklist_confirmed: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
 
     try {
-      const res = await fetch('http://localhost:5000/api/traders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      // 1. Primary: Execute Supabase .insert() into traders_list
+      const { data, error } = await supabase
+        .from('traders_list')
+        .insert([supabasePayload])
+        .select()
+        .single();
+
+      if (error) {
+        console.warn('Supabase insert notice (fallback to local acknowledgement):', error);
+      } else {
+        console.log('✅ Successfully inserted trader application to Supabase traders_list:', data);
+      }
+
+      const finalData = data || supabasePayload;
+
+      setSubmittedData({
+        licenseNumber: finalData.license_number || generatedLicense,
+        traderName: finalData.shop_name || finalData.trader_name || traderName,
+        ownerName: finalData.owner_name || ownerName,
+        instrumentType: finalData.instrument_type || instrumentType,
+        district: finalData.district || district,
+        createdAt: new Date().toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+        }),
       });
 
-      if (res.ok || res.status === 201) {
-        const json = await res.json();
-        const finalData = json.data || payload;
-
-        setSubmittedData({
-          licenseNumber: finalData.license_number || generatedLicense,
-          traderName: finalData.trader_name || traderName,
-          ownerName: finalData.owner_name || ownerName,
-          instrumentType: finalData.instrument_type || instrumentType,
-          createdAt: new Date().toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric',
-          }),
-        });
-
-        setShowSuccessModal(true);
-      } else {
-        // Fallback demo acknowledgment
-        setSubmittedData({
-          licenseNumber: generatedLicense,
-          traderName: traderName,
-          ownerName: ownerName,
-          instrumentType: instrumentType,
-          createdAt: new Date().toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric',
-          }),
-        });
-        setShowSuccessModal(true);
-      }
-    } catch {
-      // Offline / Local fallback acknowledgment
+      setShowSuccessModal(true);
+    } catch (err) {
+      console.warn('Offline / Local fallback acknowledgment:', err);
       setSubmittedData({
         licenseNumber: generatedLicense,
         traderName: traderName,
         ownerName: ownerName,
         instrumentType: instrumentType,
+        district: district,
         createdAt: new Date().toLocaleDateString('en-GB', {
           day: '2-digit',
           month: 'long',
@@ -292,18 +314,42 @@ export default function ApplyPage() {
                 </div>
               </div>
 
-              {/* Street Address */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Physical Shop / Establishment Address
-                </label>
-                <input
-                  type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="e.g. Shop No. 14, Main Market, Sector 15, Gurugram, Haryana"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#002B49] focus:bg-white transition-all"
-                />
+              {/* District & Street Address */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* District Dropdown */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    District (LMO Inspection Area) <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={district}
+                    onChange={(e) => setDistrict(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-[#002B49] focus:outline-hidden focus:ring-2 focus:ring-[#002B49] focus:bg-white transition-all cursor-pointer"
+                  >
+                    <option value="Rohtak">Rohtak</option>
+                    <option value="Hisar">Hisar</option>
+                    <option value="Gurugram">Gurugram</option>
+                    <option value="Faridabad">Faridabad</option>
+                    <option value="Ambala">Ambala</option>
+                    <option value="Panipat">Panipat</option>
+                    <option value="Karnal">Karnal</option>
+                    <option value="Sonipat">Sonipat</option>
+                  </select>
+                </div>
+
+                {/* Street Address */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Physical Shop / Establishment Address
+                  </label>
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder={`e.g. Shop No. 14, Main Market, ${district}, Haryana`}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#002B49] focus:bg-white transition-all"
+                  />
+                </div>
               </div>
             </div>
 
@@ -476,6 +522,18 @@ export default function ApplyPage() {
                   <span className="text-slate-500 block text-[11px]">Proprietor:</span>
                   <span className="font-bold text-slate-900">{submittedData.ownerName}</span>
                 </div>
+                <div>
+                  <span className="text-slate-500 block text-[11px]">Assigned District:</span>
+                  <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded inline-block font-mono text-[11px]">
+                    {submittedData.district || district}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[11px]">Initial Status:</span>
+                  <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded inline-block font-mono text-[11px]">
+                    Pending_Inspection
+                  </span>
+                </div>
                 <div className="col-span-2 pt-1">
                   <span className="text-slate-500 block text-[11px]">Instrument Type:</span>
                   <span className="font-bold text-slate-900">{submittedData.instrumentType}</span>
@@ -487,17 +545,17 @@ export default function ApplyPage() {
             <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
               <p className="font-bold">Next Steps:</p>
               <p className="text-[11px] text-amber-800 mt-0.5">
-                A State LMO Inspector has been alerted for on-site calibration and lead seal stamping. Once completed, your Schedule IX Form V Certificate will become instantly downloadable.
+                The {submittedData.district || district} District Legal Metrology Officer (LMO) has been assigned for physical calibration and stamping.
               </p>
             </div>
 
             {/* Modal Actions */}
             <div className="flex flex-col sm:flex-row gap-3">
               <Link
-                href="/admin/traders"
+                href="/trader/dashboard"
                 className="flex-1 py-3 bg-[#002B49] hover:bg-[#003B66] text-white font-bold text-xs rounded-xl text-center shadow-xs transition-colors cursor-pointer"
               >
-                View in Central Directory
+                Track Live Application Status →
               </Link>
               <button
                 type="button"

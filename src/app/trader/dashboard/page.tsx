@@ -109,14 +109,14 @@ export default function TraderDashboardPage() {
     checkTraderAuth();
   }, [router, currentUser.role, currentUser.email]);
 
-  // 2. Fetch Initial Trader Record from Supabase traders_list
+  // 2. Fetch Initial Trader Record from Supabase traders_list (latest submission first)
   useEffect(() => {
     async function fetchTraderRecord() {
       try {
         const { data, error } = await supabase
           .from('traders_list')
           .select('*')
-          .order('created_at', { ascending: true })
+          .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
@@ -131,7 +131,7 @@ export default function TraderDashboardPage() {
     fetchTraderRecord();
   }, []);
 
-  // 3. Supabase Realtime Listener (Listening to LMO and GATC actions)
+  // 3. Supabase Realtime Listener (Listening to LMO and GATC actions, and new Applications)
   useEffect(() => {
     const channel = supabase
       .channel('trader-realtime-lifecycle')
@@ -143,6 +143,10 @@ export default function TraderDashboardPage() {
           if (!updatedRow) return;
 
           setTraderShop((prev) => {
+            // If this is a newly inserted application, immediately switch tracker to it
+            if (payload.eventType === 'INSERT') {
+              return { ...updatedRow };
+            }
             if (!prev.id || prev.id === updatedRow.id || prev.license_number === updatedRow.license_number) {
               if (prev.status !== 'Approved' && updatedRow.status === 'Approved') {
                 setJustApproved(true);
