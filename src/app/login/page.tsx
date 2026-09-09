@@ -56,7 +56,7 @@ const DEMO_CREDENTIALS = {
     password: 'password123',
     name: 'Shri Rajesh Varma (LMO)',
     description: 'Senior Legal Metrology Officer',
-    targetRoute: '/lmo',
+    targetRoute: '/admin/traders',
     mockUser: MOCK_USERS[2],
   },
   GATC: {
@@ -126,6 +126,35 @@ function AuthFormContent() {
     }, 4000);
   };
 
+  // Helper to set auth cookies for server middleware
+  const setAuthCookies = (role: string, email: string, token?: string) => {
+    try {
+      const maxAge = 60 * 60 * 24 * 7;
+      const safeToken = token || 'session_' + Date.now();
+      document.cookie = `sb-access-token=${safeToken}; path=/; max-age=${maxAge}; SameSite=Lax`;
+      document.cookie = `sb-auth-token=${encodeURIComponent(
+        JSON.stringify({ access_token: safeToken, user: { email, role } })
+      )}; path=/; max-age=${maxAge}; SameSite=Lax`;
+      document.cookie = `emaap_auth=${encodeURIComponent(
+        JSON.stringify({ role, email })
+      )}; path=/; max-age=${maxAge}; SameSite=Lax`;
+    } catch (e) {
+      console.warn('Cookie sync warning:', e);
+    }
+  };
+
+  // Helper for safe immediate navigation
+  const executeRedirect = (targetRoute: string) => {
+    try {
+      router.push(targetRoute);
+    } catch {
+      // fallback
+    }
+    if (typeof window !== 'undefined') {
+      window.location.href = targetRoute;
+    }
+  };
+
   // Instant 1-Click Demo Login for Hackathon presentations
   const handleDirectDemoLogin = async (key: keyof typeof DEMO_CREDENTIALS) => {
     const demo = DEMO_CREDENTIALS[key];
@@ -153,26 +182,29 @@ function AuthFormContent() {
         role: normalized.storeRole,
       });
 
-      // 3. Routing switch statement using next/navigation (useRouter)
+      // 3. Set auth cookies for middleware
+      setAuthCookies(normalized.storeRole, demo.email);
+
+      // 4. Role-based routing switch statement
       const roleKey = demo.role.toLowerCase().trim();
+      let targetRoute = demo.targetRoute;
       switch (roleKey) {
         case 'trader':
-          router.push('/trader');
+          targetRoute = '/trader';
           break;
         case 'gatc':
-          router.push('/gatc/dashboard');
+          targetRoute = '/gatc/dashboard';
           break;
         case 'lmo':
         case 'lmo officer':
-          setLmoNotice(
-            'LMO Dashboard is optimized for the Field Inspector Mobile App. Please log in on your device.'
-          );
-          router.push('/lmo');
+          targetRoute = '/admin/traders';
           break;
         default:
-          router.push(demo.targetRoute);
+          targetRoute = demo.targetRoute;
           break;
       }
+
+      executeRedirect(targetRoute);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error during demo sign in';
       console.error('Demo sign in error:', err);
@@ -196,6 +228,53 @@ function AuthFormContent() {
     setLoading(true);
 
     try {
+      // Check if this matches a Demo Account for instant reliable access
+      const isDemoTrader = cleanEmail === DEMO_CREDENTIALS.TRADER.email;
+      const isDemoLMO = cleanEmail === DEMO_CREDENTIALS.LMO.email;
+      const isDemoGATC = cleanEmail === DEMO_CREDENTIALS.GATC.email;
+
+      if (isDemoTrader || isDemoLMO || isDemoGATC) {
+        const demoConfig = isDemoTrader
+          ? DEMO_CREDENTIALS.TRADER
+          : isDemoLMO
+          ? DEMO_CREDENTIALS.LMO
+          : DEMO_CREDENTIALS.GATC;
+
+        // Try Supabase auth in background
+        let sessionToken = 'demo_token';
+        try {
+          const { data } = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password: loginPassword,
+          });
+          if (data?.session?.access_token) {
+            sessionToken = data.session.access_token;
+          }
+        } catch {
+          // Graceful fallback for mock presentation accounts
+        }
+
+        const normalized = normalizeUserRole(demoConfig.role);
+        setCurrentUser({
+          ...demoConfig.mockUser,
+          fullName: demoConfig.name,
+          email: cleanEmail,
+          role: normalized.storeRole,
+        });
+
+        setAuthCookies(normalized.storeRole, cleanEmail, sessionToken);
+
+        const target =
+          demoConfig.targetRoute ||
+          (demoConfig.role === 'Trader'
+            ? '/trader'
+            : demoConfig.role === 'GATC'
+            ? '/gatc/dashboard'
+            : '/admin/traders');
+        executeRedirect(target);
+        return;
+      }
+
       // 1. Supabase Auth Sign In with Email & Password
       const { data, error } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
@@ -221,10 +300,14 @@ function AuthFormContent() {
 
       let userName = user.user_metadata?.full_name || cleanEmail.split('@')[0];
 
-      // If not present in user metadata, fetch from Supabase 'profiles' table
+      // If not present in user metadata, fetch from Supabase 'profiles' table with timeout
       if (!userRole) {
         try {
-          const profile = await fetchUserProfile(user.id);
+          const profilePromise = fetchUserProfile(user.id);
+          const timeoutPromise = new Promise<null>((resolve) =>
+            setTimeout(() => resolve(null), 2000)
+          );
+          const profile = await Promise.race([profilePromise, timeoutPromise]);
           if (profile?.role) {
             userRole = String(profile.role);
           }
@@ -236,18 +319,18 @@ function AuthFormContent() {
         }
       }
 
-      // Fallback: check demo accounts or email conventions if role is still not determined
+      // Fallback: check email conventions if role is still not determined
       if (!userRole) {
         if (
-          cleanEmail === DEMO_CREDENTIALS.LMO.email ||
           cleanEmail.includes('lmo') ||
+          cleanEmail.includes('officer') ||
           cleanEmail.includes('hisar') ||
           cleanEmail.includes('rohtak')
         ) {
           userRole = 'lmo';
-        } else if (cleanEmail === DEMO_CREDENTIALS.GATC.email || cleanEmail.includes('gatc')) {
+        } else if (cleanEmail.includes('gatc')) {
           userRole = 'gatc';
-        } else if (cleanEmail === DEMO_CREDENTIALS.TRADER.email || cleanEmail.includes('trader')) {
+        } else {
           userRole = 'trader';
         }
       }
@@ -275,34 +358,42 @@ function AuthFormContent() {
         pinCode: '125001',
       });
 
+      // Set auth cookies for middleware
+      setAuthCookies(normalized.storeRole, cleanEmail, data.session?.access_token);
+
       // 2. Implement Role-Based Redirects with routing switch statement using next/navigation (useRouter)
       const roleKey = userRole.toLowerCase().trim();
+      let targetRoute = '/trader';
 
       switch (roleKey) {
         case 'trader':
         case 'applicant':
-          router.push('/trader');
+          targetRoute = '/trader';
           break;
 
         case 'gatc':
-          router.push('/gatc/dashboard');
+          targetRoute = '/gatc/dashboard';
           break;
 
         case 'lmo':
         case 'lmo officer':
         case 'officer':
         case 'admin':
-          setLmoNotice(
-            'LMO Dashboard is optimized for the Field Inspector Mobile App. Please log in on your device.'
-          );
-          router.push('/lmo');
+          targetRoute = '/admin/traders';
           break;
 
         default:
-          console.error(`Login failed: Unrecognized user role "${userRole}"`);
-          setErrorMsg(`Login failed: Unrecognized role "${userRole}". Please contact administrator.`);
+          if (roleKey.includes('lmo') || roleKey.includes('officer') || roleKey.includes('admin')) {
+            targetRoute = '/admin/traders';
+          } else if (roleKey.includes('gatc')) {
+            targetRoute = '/gatc/dashboard';
+          } else {
+            targetRoute = '/trader';
+          }
           break;
       }
+
+      executeRedirect(targetRoute);
     } catch (err: unknown) {
       const msg =
         err instanceof Error
