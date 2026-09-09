@@ -27,6 +27,7 @@ import {
   Zap,
   CheckCircle2,
   Briefcase,
+  Smartphone,
 } from 'lucide-react';
 
 // Demo Credentials Configuration for Hackathon presentations
@@ -38,7 +39,7 @@ const DEMO_CREDENTIALS = {
     password: 'password123',
     name: 'Mohan Lal (Trader)',
     description: 'Commercial Enterprise / Mohan Kirana Store',
-    targetRoute: '/trader/dashboard',
+    targetRoute: '/trader',
     mockUser: {
       ...MOCK_USERS[0],
       fullName: 'Mohan Lal',
@@ -55,7 +56,7 @@ const DEMO_CREDENTIALS = {
     password: 'password123',
     name: 'Shri Rajesh Varma (LMO)',
     description: 'Senior Legal Metrology Officer',
-    targetRoute: '/admin/traders',
+    targetRoute: '/lmo',
     mockUser: MOCK_USERS[2],
   },
   GATC: {
@@ -93,6 +94,7 @@ function AuthFormContent() {
   // Feedback States
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [lmoNotice, setLmoNotice] = useState<string | null>(null);
   const [demoNotice, setDemoNotice] = useState<string | null>(null);
   const [registeredSuccess, setRegisteredSuccess] = useState<{
     fullName: string;
@@ -129,6 +131,7 @@ function AuthFormContent() {
     const demo = DEMO_CREDENTIALS[key];
     setLoading(true);
     setErrorMsg('');
+    setLmoNotice(null);
 
     try {
       // 1. Try Supabase Auth
@@ -150,10 +153,29 @@ function AuthFormContent() {
         role: normalized.storeRole,
       });
 
-      // 3. Navigate directly to the required statutory dashboard
-      router.push(demo.targetRoute);
+      // 3. Routing switch statement using next/navigation (useRouter)
+      const roleKey = demo.role.toLowerCase().trim();
+      switch (roleKey) {
+        case 'trader':
+          router.push('/trader');
+          break;
+        case 'gatc':
+          router.push('/gatc/dashboard');
+          break;
+        case 'lmo':
+        case 'lmo officer':
+          setLmoNotice(
+            'LMO Dashboard is optimized for the Field Inspector Mobile App. Please log in on your device.'
+          );
+          router.push('/lmo');
+          break;
+        default:
+          router.push(demo.targetRoute);
+          break;
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error during demo sign in';
+      console.error('Demo sign in error:', err);
       setErrorMsg(msg);
       setLoading(false);
     }
@@ -163,6 +185,7 @@ function AuthFormContent() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    setLmoNotice(null);
 
     const cleanEmail = loginEmail.trim().toLowerCase();
     if (!cleanEmail || !loginPassword) {
@@ -173,48 +196,6 @@ function AuthFormContent() {
     setLoading(true);
 
     try {
-      let roleString = '';
-      let userName = cleanEmail.split('@')[0];
-      let authUserUUID = `usr_${Date.now()}`;
-
-      // Check if this matches a Demo Account
-      const isDemoTrader = cleanEmail === DEMO_CREDENTIALS.TRADER.email;
-      const isDemoLMO = cleanEmail === DEMO_CREDENTIALS.LMO.email;
-      const isDemoGATC = cleanEmail === DEMO_CREDENTIALS.GATC.email;
-
-      if (isDemoTrader || isDemoLMO || isDemoGATC) {
-        const demoConfig = isDemoTrader
-          ? DEMO_CREDENTIALS.TRADER
-          : isDemoLMO
-          ? DEMO_CREDENTIALS.LMO
-          : DEMO_CREDENTIALS.GATC;
-
-        // Try Supabase sign in if available
-        try {
-          const { data } = await supabase.auth.signInWithPassword({
-            email: cleanEmail,
-            password: loginPassword,
-          });
-          if (data?.user) {
-            authUserUUID = data.user.id;
-          }
-        } catch {
-          // graceful fallback
-        }
-
-        const normalized = normalizeUserRole(demoConfig.role);
-        setCurrentUser({
-          ...demoConfig.mockUser,
-          id: authUserUUID,
-          fullName: demoConfig.name,
-          email: cleanEmail,
-          role: normalized.storeRole,
-        });
-
-        router.push(demoConfig.targetRoute);
-        return;
-      }
-
       // 1. Supabase Auth Sign In with Email & Password
       const { data, error } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
@@ -222,49 +203,112 @@ function AuthFormContent() {
       });
 
       if (error) {
-        throw error;
+        console.error('Login failed:', error.message);
+        setErrorMsg(error.message || 'Invalid email or password.');
+        return;
       }
 
-      const user = data.user;
-      if (user) {
-        authUserUUID = user.id;
-        const meta = user.user_metadata || {};
-        if (meta.role) roleString = meta.role;
-        if (meta.full_name) userName = meta.full_name;
+      const user = data?.user;
+      if (!user) {
+        console.error('Login failed: No user returned by Supabase.');
+        setErrorMsg('Authentication failed: No user record found.');
+        return;
+      }
 
-        // 2. Query 'profiles' table for any statutory profile role override
-        const profile = await fetchUserProfile(user.id);
-        if (profile) {
-          if (profile.role) roleString = String(profile.role);
-          if (profile.full_name) userName = profile.full_name;
+      // Immediately fetch the user's role
+      let userRole: string | undefined =
+        user.user_metadata?.role || user.app_metadata?.role;
+
+      let userName = user.user_metadata?.full_name || cleanEmail.split('@')[0];
+
+      // If not present in user metadata, fetch from Supabase 'profiles' table
+      if (!userRole) {
+        try {
+          const profile = await fetchUserProfile(user.id);
+          if (profile?.role) {
+            userRole = String(profile.role);
+          }
+          if (profile?.full_name) {
+            userName = profile.full_name;
+          }
+        } catch (profileErr) {
+          console.error('Error fetching user profile from database:', profileErr);
         }
       }
 
-      // 3. Determine role & target route
-      const roleResolution = normalizeUserRole(roleString);
+      // Fallback: check demo accounts or email conventions if role is still not determined
+      if (!userRole) {
+        if (
+          cleanEmail === DEMO_CREDENTIALS.LMO.email ||
+          cleanEmail.includes('lmo') ||
+          cleanEmail.includes('hisar') ||
+          cleanEmail.includes('rohtak')
+        ) {
+          userRole = 'lmo';
+        } else if (cleanEmail === DEMO_CREDENTIALS.GATC.email || cleanEmail.includes('gatc')) {
+          userRole = 'gatc';
+        } else if (cleanEmail === DEMO_CREDENTIALS.TRADER.email || cleanEmail.includes('trader')) {
+          userRole = 'trader';
+        }
+      }
 
-      // 4. Update Application State Store
+      // 3. Error Handling: check if user role is undefined
+      if (!userRole) {
+        console.error('Login failed: User role is undefined for user', cleanEmail);
+        setErrorMsg('Login failed: User role is undefined. Please contact administrator.');
+        return;
+      }
+
+      // Update Metrology Store State
+      const normalized = normalizeUserRole(userRole);
       setCurrentUser({
-        id: authUserUUID,
+        id: user.id,
         fullName: userName,
         email: cleanEmail,
         mobile: '+91 98765 43210',
-        role: roleResolution.storeRole,
-        businessName: roleResolution.storeRole === 'APPLICANT' ? 'Registered Enterprise' : undefined,
-        designation: roleResolution.storeRole === 'LMO' ? 'Legal Metrology Officer' : undefined,
+        role: normalized.storeRole,
+        businessName: normalized.storeRole === 'APPLICANT' ? 'Registered Enterprise' : undefined,
+        designation: normalized.storeRole === 'LMO' ? 'Legal Metrology Officer' : undefined,
         address: 'National Capital Region',
-        district: 'South Delhi',
-        state: 'Delhi (NCT)',
-        pinCode: '110001',
+        district: cleanEmail.includes('hisar') ? 'Hisar' : 'Rohtak',
+        state: 'Haryana',
+        pinCode: '125001',
       });
 
-      // 5. Navigate to appropriate role page
-      router.push(roleResolution.redirectPath);
+      // 2. Implement Role-Based Redirects with routing switch statement using next/navigation (useRouter)
+      const roleKey = userRole.toLowerCase().trim();
+
+      switch (roleKey) {
+        case 'trader':
+        case 'applicant':
+          router.push('/trader');
+          break;
+
+        case 'gatc':
+          router.push('/gatc/dashboard');
+          break;
+
+        case 'lmo':
+        case 'lmo officer':
+        case 'officer':
+        case 'admin':
+          setLmoNotice(
+            'LMO Dashboard is optimized for the Field Inspector Mobile App. Please log in on your device.'
+          );
+          router.push('/lmo');
+          break;
+
+        default:
+          console.error(`Login failed: Unrecognized user role "${userRole}"`);
+          setErrorMsg(`Login failed: Unrecognized role "${userRole}". Please contact administrator.`);
+          break;
+      }
     } catch (err: unknown) {
       const msg =
         err instanceof Error
           ? err.message
           : 'Invalid credentials. Please check your email and password.';
+      console.error('Unhandled login error:', err);
       setErrorMsg(msg);
     } finally {
       setLoading(false);
@@ -451,6 +495,17 @@ function AuthFormContent() {
 
           {/* Form Body */}
           <div className="p-6 sm:p-8 space-y-6">
+            {/* LMO Mobile App Notice */}
+            {lmoNotice && (
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2.5 animate-in fade-in">
+                <Smartphone className="w-5 h-5 shrink-0 text-amber-600 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold text-amber-950">LMO Field Inspector Mobile Notice</p>
+                  <p className="leading-relaxed">{lmoNotice}</p>
+                </div>
+              </div>
+            )}
+
             {/* Error Message */}
             {errorMsg && (
               <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2.5 animate-in fade-in">
