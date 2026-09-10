@@ -511,36 +511,36 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                 active={activeTab === 'inspection_queue' || activeTab === 'officer-queue'}
                 onClick={() => {
                   setActiveTab('inspection_queue');
-                  router.push('/lmo');
+                  router.push('/lmo?tab=inspection_queue');
                 }}
-                href="/lmo"
+                href="/lmo?tab=inspection_queue"
                 label="Inspection Queue"
               />
               <TabButton
                 active={activeTab === 'visit_schedule' || activeTab === 'officer-calendar'}
                 onClick={() => {
                   setActiveTab('visit_schedule');
-                  router.push('/lmo');
+                  router.push('/lmo?tab=visit_schedule');
                 }}
-                href="/lmo"
+                href="/lmo?tab=visit_schedule"
                 label="Visit Schedule"
               />
               <TabButton
                 active={activeTab === 'verified'}
                 onClick={() => {
                   setActiveTab('verified');
-                  router.push('/lmo');
+                  router.push('/lmo?tab=verified');
                 }}
-                href="/lmo"
+                href="/lmo?tab=verified"
                 label="Verified"
               />
               <TabButton
                 active={activeTab === 'certificates_issued' || activeTab === 'officer-history'}
                 onClick={() => {
                   setActiveTab('certificates_issued');
-                  router.push('/lmo');
+                  router.push('/lmo?tab=certificates_issued');
                 }}
-                href="/lmo"
+                href="/lmo?tab=certificates_issued"
                 label="Certificates Issued"
               />
             </>

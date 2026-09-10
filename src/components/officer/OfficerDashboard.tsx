@@ -192,13 +192,256 @@ const SEED_LMO_TRADERS: TraderRecord[] = [
     created_at: new Date(Date.now() - 86400000 * 7).toISOString(),
     updated_at: new Date(Date.now() - 86400000 * 6).toISOString(),
   },
+  // South Delhi district
+  {
+    id: 'DL-TR-001',
+    shop_name: 'Saket Provision & Retail Supermarket',
+    trader_name: 'Saket Provision & Retail Supermarket',
+    owner_name: 'Ramesh Kumar',
+    license_number: 'DL-LMO-SOU-2026-001',
+    district: 'South Delhi',
+    status: 'Pending_Inspection',
+    address: 'Shop 14, Main Market, Hauz Khas, New Delhi - 110016',
+    instrument_type: 'Electronic Counter Scale (Class III)',
+    capacity: '30 kg / e=5g',
+    make_model: 'Essae-Teraoka DS-215 POS',
+    latitude: 28.5494,
+    longitude: 77.2001,
+    checklist_confirmed: false,
+    created_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+    updated_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+  },
+  {
+    id: 'DL-TR-002',
+    shop_name: 'Hauz Khas Agro Flour & Grain Depot',
+    trader_name: 'Hauz Khas Agro Flour & Grain Depot',
+    owner_name: 'Sunil Mathur',
+    license_number: 'DL-LMO-SOU-2026-002',
+    district: 'South Delhi',
+    status: 'Scheduled',
+    address: 'Loading Bay, Apex Supermarket, Hauz Khas - 110016',
+    instrument_type: 'Platform Scale (300 kg)',
+    capacity: '300 kg / e=50g',
+    make_model: 'Avery Weigh-Tronix ProPlatform 300',
+    latitude: 28.5492,
+    longitude: 77.2005,
+    checklist_confirmed: false,
+    scheduled_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+    scheduled_slot: '10:00 AM - 12:00 PM',
+    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+    updated_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+  },
+  {
+    id: 'DL-TR-003',
+    shop_name: 'Delhi NCR Fuel Station & Logistics',
+    trader_name: 'Delhi NCR Fuel Station & Logistics',
+    owner_name: 'Ms. Marian Spinka',
+    license_number: 'DL-LMO-SOU-2026-003',
+    district: 'South Delhi',
+    status: 'Verified',
+    address: 'Plot 12, Okhla Industrial Area Phase-II, New Delhi - 110020',
+    instrument_type: 'Fuel Dispenser Flow Meter',
+    capacity: '50 L/min standard flow',
+    make_model: 'Tokheim Quantium 510',
+    latitude: 28.4298,
+    longitude: 77.0028,
+    checklist_confirmed: true,
+    lmo_id: 'lmo.southdelhi@doca.gov.in',
+    digital_signature: 'LMO-VERIF-DL-9014-PASS',
+    signed_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+    created_at: new Date(Date.now() - 86400000 * 4).toISOString(),
+    updated_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+  },
+  {
+    id: 'DL-TR-004',
+    shop_name: 'Precision Analytical Labs Okhla',
+    trader_name: 'Precision Analytical Labs Okhla',
+    owner_name: 'Dr. Priya Sharma',
+    license_number: 'DL-LMO-SOU-2026-004',
+    district: 'South Delhi',
+    status: 'Approved',
+    address: 'Cleanroom Lab B-2, Okhla Phase-III, New Delhi - 110020',
+    instrument_type: 'Analytical Micro-Balance (Class I)',
+    capacity: '220 g / e=0.1mg',
+    make_model: 'Mettler Toledo XPR-205',
+    latitude: 28.5284,
+    longitude: 77.2711,
+    checklist_confirmed: true,
+    lmo_id: 'lmo.southdelhi@doca.gov.in',
+    digital_signature: 'GATC-SIG-7F32A9C1D4E0F099',
+    signed_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+    created_at: new Date(Date.now() - 86400000 * 6).toISOString(),
+    updated_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+  },
+  // Gurugram district
+  {
+    id: 'GGN-TR-001',
+    shop_name: 'Cyber City Retail Mart & Groceries',
+    trader_name: 'Cyber City Retail Mart & Groceries',
+    owner_name: 'Amitabh Sen',
+    license_number: 'HR-LMO-GGN-2026-001',
+    district: 'Gurugram',
+    status: 'Pending_Inspection',
+    address: 'DLF Phase 2, Sector 25, Gurugram - 122002',
+    instrument_type: 'Electronic Counter Scale (Class III)',
+    capacity: '30 kg / e=5g',
+    make_model: 'Essae DS-852 Tabletop',
+    latitude: 28.4895,
+    longitude: 77.0890,
+    checklist_confirmed: false,
+    created_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+    updated_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+  },
+  {
+    id: 'GGN-TR-002',
+    shop_name: 'Gurugram Cold Storage & Dairy Depot',
+    trader_name: 'Gurugram Cold Storage & Dairy Depot',
+    owner_name: 'Mrs. Alysa Bahringer',
+    license_number: 'HR-LMO-GGN-2026-002',
+    district: 'Gurugram',
+    status: 'Scheduled',
+    address: 'Shed 4, Udyog Vihar Phase 4, Gurugram - 122015',
+    instrument_type: 'Platform Scale (500 kg)',
+    capacity: '500 kg / e=50g',
+    make_model: 'Avery Weigh-Tronix AV-500',
+    latitude: 28.5025,
+    longitude: 77.0763,
+    checklist_confirmed: false,
+    scheduled_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+    scheduled_slot: '02:00 PM - 04:00 PM',
+    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+    updated_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+  },
+  {
+    id: 'GGN-TR-003',
+    shop_name: 'Heritage Gold & Diamonds MG Road',
+    trader_name: 'Heritage Gold & Diamonds MG Road',
+    owner_name: 'Kailash Choksi',
+    license_number: 'HR-LMO-GGN-2026-003',
+    district: 'Gurugram',
+    status: 'Verified',
+    address: 'Shop 10, Gold Souk Mall, Block C, Sushant Lok Phase I, Gurugram - 122002',
+    instrument_type: 'High Precision Gold Balance (Class II)',
+    capacity: '600 g / e=0.01g',
+    make_model: 'Sartorius Gold Series GS-600',
+    latitude: 28.4612,
+    longitude: 77.0754,
+    checklist_confirmed: true,
+    lmo_id: 'officer.gurugram@gov.in',
+    digital_signature: 'LMO-VERIF-GGN-8821-PASS',
+    signed_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+    created_at: new Date(Date.now() - 86400000 * 4).toISOString(),
+    updated_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+  },
+  {
+    id: 'GGN-TR-004',
+    shop_name: 'Manesar Logistics & Bulk Weighbridge',
+    trader_name: 'Manesar Logistics & Bulk Weighbridge',
+    owner_name: 'Surinder Rao',
+    license_number: 'HR-LMO-GGN-2026-004',
+    district: 'Gurugram',
+    status: 'Approved',
+    address: 'Plot 99, Sector 8, IMT Manesar, Gurugram - 122050',
+    instrument_type: 'Weighbridge (60 Ton)',
+    capacity: '60 Ton / e=10kg',
+    make_model: 'Avery Weigh-Tronix Bridgemont',
+    latitude: 28.3512,
+    longitude: 76.9388,
+    checklist_confirmed: true,
+    lmo_id: 'officer.gurugram@gov.in',
+    digital_signature: 'GATC-SIG-GGN-9912-CERT',
+    signed_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+    created_at: new Date(Date.now() - 86400000 * 6).toISOString(),
+    updated_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+  },
 ];
+
+function generateDistrictSeed(dist: string): TraderRecord[] {
+  const code = (dist || 'LMO').substring(0, 3).toUpperCase();
+  return [
+    {
+      id: `${code}-TR-001`,
+      shop_name: `${dist} Retail & Grocery Mart`,
+      trader_name: `${dist} Retail & Grocery Mart`,
+      owner_name: 'Rajesh Kumar',
+      license_number: `HR-LMO-${code}-2026-101`,
+      district: dist,
+      status: 'Pending_Inspection',
+      inspection_status: 'Pending',
+      address: `Shop 14, Main Commercial Complex, ${dist}`,
+      instrument_type: 'Electronic Counter Scale (Class III)',
+      capacity: '30 kg / e=5g',
+      make_model: 'Essae DS-852 Tabletop',
+      checklist_confirmed: false,
+      created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+      updated_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+    },
+    {
+      id: `${code}-TR-002`,
+      shop_name: `${dist} Agro Mandi Wholesale Depot`,
+      trader_name: `${dist} Agro Mandi Wholesale Depot`,
+      owner_name: 'Suresh Verma',
+      license_number: `HR-LMO-${code}-2026-102`,
+      district: dist,
+      status: 'Scheduled',
+      inspection_status: 'Pending',
+      address: `Shed 8, Grain Market Yard, ${dist}`,
+      instrument_type: 'Platform Weighing Scale (500 kg)',
+      capacity: '500 kg / e=50g',
+      make_model: 'Avery Weigh-Tronix AV-500',
+      checklist_confirmed: false,
+      scheduled_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+      scheduled_slot: '10:00 AM - 12:00 PM',
+      created_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+      updated_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+    },
+    {
+      id: `${code}-TR-003`,
+      shop_name: `${dist} Jewelers & Precision Metals`,
+      trader_name: `${dist} Jewelers & Precision Metals`,
+      owner_name: 'Vikram Soni',
+      license_number: `HR-LMO-${code}-2026-103`,
+      district: dist,
+      status: 'Verified',
+      inspection_status: 'Passed',
+      address: `Sarafa Bazar, Near Clock Tower, ${dist}`,
+      instrument_type: 'High Precision Gold Balance (Class II)',
+      capacity: '600 g / e=0.01g',
+      make_model: 'Sartorius Gold Series GS-600',
+      checklist_confirmed: true,
+      digital_signature: `LMO-VERIF-${code}-8821-PASS`,
+      signed_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+      created_at: new Date(Date.now() - 86400000 * 4).toISOString(),
+      updated_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+    },
+    {
+      id: `${code}-TR-004`,
+      shop_name: `${dist} Fuel & Petroleum Dispenser`,
+      trader_name: `${dist} Fuel & Petroleum Dispenser`,
+      owner_name: 'Dr. Priya Sharma',
+      license_number: `HR-LMO-${code}-2026-104`,
+      district: dist,
+      status: 'Approved',
+      inspection_status: 'Passed',
+      address: `Highway Bypass Logistics Plaza, ${dist}`,
+      instrument_type: 'Fuel Dispenser Flow Meter',
+      capacity: '50 L/min',
+      make_model: 'Tokheim Quantium 510',
+      checklist_confirmed: true,
+      digital_signature: `GATC-SIG-${code}-9014-CERT`,
+      signed_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+      created_at: new Date(Date.now() - 86400000 * 6).toISOString(),
+      updated_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+    },
+  ];
+}
 
 interface OfficerDashboardProps {
   initialTab?: string;
+  onTabChange?: (tab: LmoTabType) => void;
 }
 
-export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
+export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardProps) {
   const { currentUser, isOfflineMode, setIsOfflineMode } = useMetrologyStore();
 
   // 1. Navigation & Tab State (Strictly fulfills: inspection_queue, visit_schedule, verified, certificates_issued)
@@ -216,6 +459,11 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
       setActiveTab(resolveTab(initialTab));
     }
   }, [initialTab]);
+
+  const handleTabChange = (t: LmoTabType) => {
+    setActiveTab(t);
+    onTabChange?.(t);
+  };
 
   // 2. User Profile & District Jurisdiction State
   const [userDistrict, setUserDistrict] = useState<string>('Hisar');
@@ -245,104 +493,171 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
   };
 
   // -------------------------------------------------------------
-  // Step 1: Get Authenticated User Profile & Determine District
+  // Step 1 & 2: Confirm Session, Determine District & Fetch Data
+  // Supports Supabase direct query (.eq('district', userDistrict))
+  // AND Express API (/api/traders?district=Hisar)
   // -------------------------------------------------------------
-  useEffect(() => {
-    async function determineUserDistrict() {
+  const fetchDistrictData = async (district: string) => {
+    setLoading(true);
+    let loaded: TraderRecord[] = [];
+
+    // 1. Direct Supabase Query (.eq('district', userDistrict))
+    if (supabase) {
       try {
-        let detectedDistrict = '';
-        let detectedName = '';
-        let detectedEmail = '';
+        const { data: listData, error: listError } = await supabase
+          .from('traders_list')
+          .select('*')
+          .eq('district', district)
+          .order('created_at', { ascending: false });
+
+        if (!listError && listData && listData.length > 0) {
+          loaded = listData as TraderRecord[];
+        } else {
+          // Check 'traders' table with district filter
+          const { data: trData, error: trError } = await supabase
+            .from('traders')
+            .select('*')
+            .eq('district', district);
+
+          if (!trError && trData && trData.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            loaded = trData.map((t: any) => ({
+              id: String(t.id || t.license_number),
+              trader_name: t.shop_name || t.trader_name,
+              shop_name: t.shop_name || t.trader_name,
+              owner_name: t.owner_name,
+              license_number: t.license_number,
+              district: t.district || district,
+              status: t.status || (t.inspection_status === 'Passed' ? 'Approved' : t.inspection_status || 'Pending_Inspection'),
+              inspection_status: t.inspection_status || (t.status === 'Approved' ? 'Passed' : 'Pending'),
+              instrument_type: t.instrument_type,
+              latitude: t.latitude,
+              longitude: t.longitude,
+            }));
+          }
+        }
+      } catch (sbErr) {
+        console.warn('Direct Supabase fetch note:', sbErr);
+      }
+    }
+
+    // 2. Express API Query (/api/traders?district=...)
+    if (loaded.length === 0) {
+      try {
+        let apiUrl = `${API_BASE_URL || 'http://localhost:5000'}/api/traders?district=${encodeURIComponent(district)}`;
+        if (typeof window !== 'undefined') {
+          const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          if (!isLocalhost && (apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1'))) {
+            apiUrl = `/api/traders?district=${encodeURIComponent(district)}`;
+          }
+        }
+
+        const res = await fetch(apiUrl);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            loaded = json.data.map((t: any) => ({
+              id: String(t.id || t.license_number),
+              trader_name: t.shop_name || t.trader_name,
+              shop_name: t.shop_name || t.trader_name,
+              owner_name: t.owner_name,
+              license_number: t.license_number,
+              district: t.district || district,
+              status: t.status || (t.inspection_status === 'Passed' ? 'Approved' : t.inspection_status || 'Pending_Inspection'),
+              inspection_status: t.inspection_status || (t.status === 'Approved' ? 'Passed' : 'Pending'),
+              instrument_type: t.instrument_type,
+              latitude: t.latitude,
+              longitude: t.longitude,
+            }));
+          }
+        }
+      } catch (apiErr) {
+        console.warn('Express API fetch note:', apiErr);
+      }
+    }
+
+    // 3. Fallback: Seed data strictly filtered by this district
+    const matchedSeed = SEED_LMO_TRADERS.filter(
+      (t) => (t.district || '').toLowerCase() === district.toLowerCase()
+    );
+    const districtFallback = matchedSeed.length > 0 ? matchedSeed : generateDistrictSeed(district);
+
+    // STRICT GUARANTEE: Never show all users! Always filter strictly by district
+    const districtFiltered = loaded.filter(
+      (t) => (t.district || '').toLowerCase() === district.toLowerCase()
+    );
+
+    setTraders(districtFiltered.length > 0 ? districtFiltered : districtFallback);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initializeOfficerAndData() {
+      try {
+        let confirmedDistrict = '';
+        let confirmedName = '';
+        let confirmedEmail = '';
 
         if (supabase) {
           const { data: sessionData } = await supabase.auth.getSession();
           const authUser = sessionData?.session?.user;
 
           if (authUser) {
-            detectedEmail = authUser.email || '';
-            detectedDistrict = authUser.user_metadata?.district || '';
-            detectedName = authUser.user_metadata?.full_name || '';
+            confirmedEmail = authUser.email || '';
+            confirmedDistrict = authUser.user_metadata?.district || '';
+            confirmedName = authUser.user_metadata?.full_name || '';
 
-            // Check profiles table for assigned district
-            if (!detectedDistrict && authUser.id) {
+            if (!confirmedDistrict && authUser.id) {
               const { data: profile } = await supabase
                 .from('profiles')
                 .select('district, full_name, role')
                 .eq('id', authUser.id)
                 .maybeSingle();
 
-              if (profile?.district) {
-                detectedDistrict = profile.district;
-              }
-              if (profile?.full_name && !detectedName) {
-                detectedName = profile.full_name;
-              }
+              if (profile?.district) confirmedDistrict = profile.district;
+              if (profile?.full_name && !confirmedName) confirmedName = profile.full_name;
             }
           }
         }
 
-        // Fallback to zustand currentUser store
-        if (!detectedDistrict && currentUser?.district) {
-          detectedDistrict = currentUser.district;
+        if (!confirmedDistrict && currentUser?.district) {
+          confirmedDistrict = currentUser.district;
         }
-        if (!detectedName && currentUser?.fullName) {
-          detectedName = currentUser.fullName;
+        if (!confirmedName && currentUser?.fullName) {
+          confirmedName = currentUser.fullName;
+        }
+        if (!confirmedEmail && currentUser?.email) {
+          confirmedEmail = currentUser.email;
         }
 
-        const finalDistrict = detectedDistrict || 'Hisar';
-        setUserDistrict(finalDistrict);
-        if (detectedName) setOfficerName(detectedName);
-        if (detectedEmail) setOfficerEmail(detectedEmail);
+        const finalDistrict = confirmedDistrict || 'Hisar';
+
+        if (isMounted) {
+          setUserDistrict(finalDistrict);
+          if (confirmedName) setOfficerName(confirmedName);
+          if (confirmedEmail) setOfficerEmail(confirmedEmail);
+        }
+
+        // Execute data fetch strictly for this confirmed district
+        await fetchDistrictData(finalDistrict);
       } catch (err) {
         console.warn('Error determining officer district:', err);
-        setUserDistrict('Hisar');
-      }
-    }
-
-    determineUserDistrict();
-  }, [currentUser]);
-
-  // -------------------------------------------------------------
-  // Step 2: Fetch Traders strictly filtered by userDistrict
-  // -------------------------------------------------------------
-  const fetchDistrictData = async (district: string) => {
-    setLoading(true);
-    try {
-      if (supabase) {
-        const { data, error } = await supabase
-          .from('traders_list')
-          .select('*')
-          .eq('district', district)
-          .order('created_at', { ascending: false });
-
-        if (!error && data && data.length > 0) {
-          setTraders(data as TraderRecord[]);
-          setLoading(false);
-          return;
+        if (isMounted) {
+          setUserDistrict('Hisar');
         }
+        await fetchDistrictData('Hisar');
       }
-
-      // Fallback: Filter seed data strictly by district
-      const filteredSeed = SEED_LMO_TRADERS.filter(
-        (t) => (t.district || '').toLowerCase() === district.toLowerCase()
-      );
-      setTraders(filteredSeed.length > 0 ? filteredSeed : SEED_LMO_TRADERS);
-    } catch (err) {
-      console.warn('Supabase traders_list fetch notice, using fallback:', err);
-      const filteredSeed = SEED_LMO_TRADERS.filter(
-        (t) => (t.district || '').toLowerCase() === district.toLowerCase()
-      );
-      setTraders(filteredSeed.length > 0 ? filteredSeed : SEED_LMO_TRADERS);
-    } finally {
-      setLoading(false);
     }
-  };
 
-  useEffect(() => {
-    if (userDistrict) {
-      fetchDistrictData(userDistrict);
-    }
-  }, [userDistrict]);
+    initializeOfficerAndData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser]);
 
   // -------------------------------------------------------------
   // Step 3: Realtime Supabase Subscription (Filtered by District)
@@ -375,34 +690,63 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
   // Step 4: Category Filtering for the 4 Interactive Tabs
   // -------------------------------------------------------------
   const counts = useMemo(() => {
+    const districtTraders = traders.filter(
+      (t) => (t.district || '').toLowerCase() === userDistrict.toLowerCase()
+    );
     return {
-      queue: traders.filter((t) => {
+      queue: districtTraders.filter((t) => {
         const s = (t.status || '').toLowerCase();
-        return s === 'pending_inspection' || s === 'pending' || s === 'submitted' || s === 'under_review';
+        const insp = (t.inspection_status || '').toLowerCase();
+        return (
+          s === 'pending_inspection' ||
+          s === 'pending' ||
+          s === 'submitted' ||
+          s === 'under_review' ||
+          insp === 'pending'
+        );
       }).length,
-      scheduled: traders.filter((t) => {
+      scheduled: districtTraders.filter((t) => {
         const s = (t.status || '').toLowerCase();
         return s === 'scheduled' || s === 'visit_scheduled';
       }).length,
-      verified: traders.filter((t) => {
+      verified: districtTraders.filter((t) => {
         const s = (t.status || '').toLowerCase();
-        return s === 'verified' || s === 'passed' || s === 'under_review';
+        const insp = (t.inspection_status || '').toLowerCase();
+        return (
+          s === 'verified' ||
+          (insp === 'passed' && s !== 'approved' && !t.digital_signature?.includes('GATC'))
+        );
       }).length,
-      issued: traders.filter((t) => {
+      issued: districtTraders.filter((t) => {
         const s = (t.status || '').toLowerCase();
-        return s === 'approved' || s === 'verified' || Boolean(t.digital_signature);
+        const insp = (t.inspection_status || '').toLowerCase();
+        return (
+          s === 'approved' ||
+          Boolean(t.digital_signature) ||
+          (insp === 'passed' && (s === 'approved' || Boolean(t.digital_signature)))
+        );
       }).length,
     };
-  }, [traders]);
+  }, [traders, userDistrict]);
 
   const displayedList = useMemo(() => {
-    let list = [...traders];
+    // 1. Strict District Filter: Only allow traders from this officer's district
+    let list = traders.filter(
+      (t) => (t.district || '').toLowerCase() === userDistrict.toLowerCase()
+    );
 
-    // Filter by activeTab
+    // 2. Interactive Navigation Tabs Filter
     if (activeTab === 'inspection_queue') {
       list = list.filter((t) => {
         const s = (t.status || '').toLowerCase();
-        return s === 'pending_inspection' || s === 'pending' || s === 'submitted';
+        const insp = (t.inspection_status || '').toLowerCase();
+        return (
+          s === 'pending_inspection' ||
+          s === 'pending' ||
+          s === 'submitted' ||
+          s === 'under_review' ||
+          insp === 'pending'
+        );
       });
     } else if (activeTab === 'visit_schedule') {
       list = list.filter((t) => {
@@ -412,16 +756,25 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
     } else if (activeTab === 'verified') {
       list = list.filter((t) => {
         const s = (t.status || '').toLowerCase();
-        return s === 'verified' || s === 'passed' || s === 'under_review';
+        const insp = (t.inspection_status || '').toLowerCase();
+        return (
+          s === 'verified' ||
+          (insp === 'passed' && s !== 'approved' && !t.digital_signature?.includes('GATC'))
+        );
       });
     } else if (activeTab === 'certificates_issued') {
       list = list.filter((t) => {
         const s = (t.status || '').toLowerCase();
-        return s === 'approved' || s === 'verified' || Boolean(t.digital_signature);
+        const insp = (t.inspection_status || '').toLowerCase();
+        return (
+          s === 'approved' ||
+          Boolean(t.digital_signature) ||
+          (insp === 'passed' && (s === 'approved' || Boolean(t.digital_signature)))
+        );
       });
     }
 
-    // Search query
+    // 3. Search query filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
@@ -434,7 +787,7 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
     }
 
     return list;
-  }, [traders, activeTab, searchQuery]);
+  }, [traders, activeTab, userDistrict, searchQuery]);
 
   // -------------------------------------------------------------
   // Actions: Schedule Visit & Complete Verification
@@ -574,6 +927,7 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
             onChange={(e) => {
               const newD = e.target.value;
               setUserDistrict(newD);
+              fetchDistrictData(newD);
               showToast(`Switched view to ${newD} district jurisdiction`);
             }}
             className="text-xs font-bold bg-white text-slate-900 px-3 py-1.5 rounded-xl border border-slate-300 shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#002B49] cursor-pointer"
@@ -584,9 +938,10 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
             <option value="Gurugram">Gurugram (NCR)</option>
           </select>
           <button
+            type="button"
             onClick={() => fetchDistrictData(userDistrict)}
             title="Refresh District Records"
-            className="p-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl border border-slate-200 transition-colors"
+            className="p-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl border border-slate-200 transition-colors cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-blue-600' : ''}`} />
           </button>
@@ -596,7 +951,7 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
       {/* KPI Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div
-          onClick={() => setActiveTab('inspection_queue')}
+          onClick={() => handleTabChange('inspection_queue')}
           className={`p-5 rounded-2xl border transition-all cursor-pointer ${
             activeTab === 'inspection_queue'
               ? 'bg-blue-50/60 border-blue-300 shadow-xs'
@@ -612,7 +967,7 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
         </div>
 
         <div
-          onClick={() => setActiveTab('visit_schedule')}
+          onClick={() => handleTabChange('visit_schedule')}
           className={`p-5 rounded-2xl border transition-all cursor-pointer ${
             activeTab === 'visit_schedule'
               ? 'bg-amber-50/60 border-amber-300 shadow-xs'
@@ -628,7 +983,7 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
         </div>
 
         <div
-          onClick={() => setActiveTab('verified')}
+          onClick={() => handleTabChange('verified')}
           className={`p-5 rounded-2xl border transition-all cursor-pointer ${
             activeTab === 'verified'
               ? 'bg-indigo-50/60 border-indigo-300 shadow-xs'
@@ -644,7 +999,7 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
         </div>
 
         <div
-          onClick={() => setActiveTab('certificates_issued')}
+          onClick={() => handleTabChange('certificates_issued')}
           className={`p-5 rounded-2xl border transition-all cursor-pointer ${
             activeTab === 'certificates_issued'
               ? 'bg-emerald-50/60 border-emerald-300 shadow-xs'
@@ -665,7 +1020,8 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
         <div className="flex flex-wrap items-center gap-2.5 border-b border-slate-200 pb-3">
           {/* Tab 1: Inspection Queue */}
           <button
-            onClick={() => setActiveTab('inspection_queue')}
+            type="button"
+            onClick={() => handleTabChange('inspection_queue')}
             className={`px-5 py-2.5 text-xs font-extrabold rounded-2xl transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'inspection_queue'
                 ? 'bg-[#002B49] text-white shadow-md ring-2 ring-[#002B49]/30'
@@ -687,7 +1043,8 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
 
           {/* Tab 2: Visit Schedule */}
           <button
-            onClick={() => setActiveTab('visit_schedule')}
+            type="button"
+            onClick={() => handleTabChange('visit_schedule')}
             className={`px-5 py-2.5 text-xs font-extrabold rounded-2xl transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'visit_schedule'
                 ? 'bg-[#002B49] text-white shadow-md ring-2 ring-[#002B49]/30'
@@ -709,7 +1066,8 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
 
           {/* Tab 3: Verified */}
           <button
-            onClick={() => setActiveTab('verified')}
+            type="button"
+            onClick={() => handleTabChange('verified')}
             className={`px-5 py-2.5 text-xs font-extrabold rounded-2xl transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'verified'
                 ? 'bg-[#002B49] text-white shadow-md ring-2 ring-[#002B49]/30'
@@ -731,7 +1089,8 @@ export function OfficerDashboard({ initialTab }: OfficerDashboardProps) {
 
           {/* Tab 4: Certificates Issued */}
           <button
-            onClick={() => setActiveTab('certificates_issued')}
+            type="button"
+            onClick={() => handleTabChange('certificates_issued')}
             className={`px-5 py-2.5 text-xs font-extrabold rounded-2xl transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'certificates_issued'
                 ? 'bg-[#002B49] text-white shadow-md ring-2 ring-[#002B49]/30'

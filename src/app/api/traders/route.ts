@@ -7,15 +7,17 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get('limit') || '100', 10);
     const status = searchParams.get('status');
+    const district = searchParams.get('district');
 
     // Attempt Supabase fetch
     if (supabase) {
       try {
         // 1. First attempt traders_list (active legal metrology verification table)
-        const { data: listData, error: listError } = await supabase
-          .from('traders_list')
-          .select('*')
-          .limit(limit);
+        let listQuery = supabase.from('traders_list').select('*').limit(limit);
+        if (district) {
+          listQuery = listQuery.ilike('district', `%${district}%`);
+        }
+        const { data: listData, error: listError } = await listQuery;
 
         if (!listError && listData && listData.length > 0) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -52,6 +54,9 @@ export async function GET(req: NextRequest) {
 
         // 2. Fallback to 'traders' or 'lmo_mock_traders'
         let query = supabase.from('traders').select('*').limit(limit);
+        if (district) {
+          query = query.ilike('district', `%${district}%`);
+        }
         if (status && status !== 'All') {
           query = query.eq('inspection_status', status);
         }
@@ -80,7 +85,66 @@ export async function GET(req: NextRequest) {
     }
 
     // Fallback to in-memory mock traders
-    const fallbackList = getMockTradersList(limit, status);
+    let fallbackList = getMockTradersList(limit, status);
+    if (district) {
+      const match = fallbackList.filter((t) =>
+        (t.district || '').toLowerCase() === district.toLowerCase()
+      );
+      if (match.length > 0) {
+        fallbackList = match;
+      } else {
+        const code = district.substring(0, 3).toUpperCase();
+        fallbackList = [
+          {
+            id: 101,
+            trader_name: `${district} General Provision Store`,
+            shop_name: `${district} General Provision Store`,
+            owner_name: 'Rajesh Kumar',
+            license_number: `HR-LMO-${code}-2026-101`,
+            district: district,
+            inspection_status: 'Pending',
+            status: 'Pending_Inspection',
+            instrument_type: 'Electronic Counter Scale',
+          },
+          {
+            id: 102,
+            trader_name: `${district} Wholesale Agro Mandi`,
+            shop_name: `${district} Wholesale Agro Mandi`,
+            owner_name: 'Suresh Verma',
+            license_number: `HR-LMO-${code}-2026-102`,
+            district: district,
+            inspection_status: 'Pending',
+            status: 'Scheduled',
+            instrument_type: 'Platform Scale (500 kg)',
+          },
+          {
+            id: 103,
+            trader_name: `${district} Jewelers & Precious Metals`,
+            shop_name: `${district} Jewelers & Precious Metals`,
+            owner_name: 'Vikram Soni',
+            license_number: `HR-LMO-${code}-2026-103`,
+            district: district,
+            inspection_status: 'Passed',
+            status: 'Verified',
+            instrument_type: 'High Precision Balance',
+          },
+          {
+            id: 104,
+            trader_name: `${district} Petroleum & Logistics Depot`,
+            shop_name: `${district} Petroleum & Logistics Depot`,
+            owner_name: 'Dr. Priya Sharma',
+            license_number: `HR-LMO-${code}-2026-104`,
+            district: district,
+            inspection_status: 'Passed',
+            status: 'Approved',
+            instrument_type: 'Fuel Dispenser Meter',
+          },
+        ];
+        if (status && status !== 'All') {
+          fallbackList = fallbackList.filter((t) => (t.inspection_status || '').toLowerCase() === status.toLowerCase());
+        }
+      }
+    }
     return NextResponse.json({
       success: true,
       count: fallbackList.length,

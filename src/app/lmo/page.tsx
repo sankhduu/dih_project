@@ -1,20 +1,34 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
-import { OfficerDashboard } from '@/components/officer/OfficerDashboard';
+import { OfficerDashboard, LmoTabType } from '@/components/officer/OfficerDashboard';
 
-export default function LMODashboardPage() {
-  const [headerTab, setHeaderTab] = useState<string>('inspection_queue');
+function LMODashboardContent() {
+  const searchParams = useSearchParams();
+  const tabFromQuery = searchParams.get('tab') as LmoTabType | null;
+  const [headerTab, setHeaderTab] = useState<string>(tabFromQuery || 'inspection_queue');
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-sans antialiased">
       <Header activeTab={headerTab} setActiveTab={setHeaderTab} />
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <OfficerDashboard initialTab={headerTab} />
+        <OfficerDashboard
+          initialTab={tabFromQuery || headerTab}
+          onTabChange={(t) => setHeaderTab(t)}
+        />
       </main>
       <Footer />
     </div>
+  );
+}
+
+export default function LMODashboardPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center text-xs text-slate-500">Loading LMO Portal...</div>}>
+      <LMODashboardContent />
+    </Suspense>
   );
 }

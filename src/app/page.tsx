@@ -553,6 +553,7 @@ export default function HomePage() {
                 ? 'verified'
                 : 'inspection_queue'
             }
+            onTabChange={(t) => setActiveTab(t)}
           />
         )}
 

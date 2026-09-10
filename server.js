@@ -49,15 +49,17 @@ app.use(
 app.use(express.json());
 
 // Initialize Supabase Client
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
+const supabaseUrl =
+  process.env.SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  'https://irirruitftauycezkofr.supabase.co';
+const supabaseAnonKey =
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlyaXJydWl0ZnRhdXljZXprb2ZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxMDQwNjMsImV4cCI6MjEwMzY4MDA2M30.snp0o-TyGBRBuV6bIdqRoYp6QSATAcO_mjMY2ZVgwto';
 
 let supabase = null;
-const isSupabaseConfigured =
-  supabaseUrl &&
-  supabaseAnonKey &&
-  !supabaseUrl.includes('your-project-ref') &&
-  !supabaseAnonKey.includes('your-anon-key');
+const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
 if (supabaseUrl && supabaseAnonKey) {
   try {
@@ -67,42 +69,144 @@ if (supabaseUrl && supabaseAnonKey) {
   }
 }
 
-// Fallback mock trader database in case Supabase table is empty or local testing
+// Fallback mock trader database with complete sets for each district covering all 4 tabs
 const SAMPLE_MOCK_TRADERS = {
+  // Hisar Jurisdiction
   'LMO/2026/10001': {
+    id: 1,
     trader_name: 'Apex Supermarket & Grocery Store',
+    shop_name: 'Apex Supermarket & Grocery Store',
     owner_name: 'Ramesh Kumar',
     license_number: 'LMO/2026/10001',
+    district: 'Hisar',
     inspection_status: 'Passed',
+    status: 'Approved',
     instrument_type: 'Electronic Counter Scale',
   },
   'LMO/2026/10002': {
+    id: 2,
     trader_name: 'Precision Pharma & Diagnostic Labs',
+    shop_name: 'Precision Pharma & Diagnostic Labs',
     owner_name: 'Dr. Priya Sharma',
     license_number: 'LMO/2026/10002',
+    district: 'Hisar',
     inspection_status: 'Passed',
+    status: 'Verified',
     instrument_type: 'Analytical Precision Balance',
   },
   'LMO/2026/10003': {
+    id: 3,
     trader_name: 'Haryana Agro Flour Mill & Grain Depot',
+    shop_name: 'Haryana Agro Flour Mill & Grain Depot',
     owner_name: 'Haskell Hahn',
     license_number: 'LMO/2026/10003',
+    district: 'Hisar',
     inspection_status: 'Pending',
+    status: 'Pending_Inspection',
     instrument_type: 'Platform Scale',
   },
   'LMO/2026/10004': {
-    trader_name: 'Karnal Cotton & Ginning Mill',
-    owner_name: 'Wallace Hintz',
+    id: 4,
+    trader_name: 'Hisar Steels & Metal Works',
+    shop_name: 'Hisar Steels & Metal Works',
+    owner_name: 'Suresh Bishnoi',
     license_number: 'LMO/2026/10004',
-    inspection_status: 'Failed',
+    district: 'Hisar',
+    inspection_status: 'Pending',
+    status: 'Scheduled',
+    instrument_type: 'Platform Scale (500 kg)',
+  },
+
+  // Rohtak Jurisdiction
+  'LMO/2026/10005': {
+    id: 5,
+    trader_name: 'Rohtak Agro Mandi Depot',
+    shop_name: 'Rohtak Agro Mandi Depot',
+    owner_name: 'Dharmender Hooda',
+    license_number: 'LMO/2026/10005',
+    district: 'Rohtak',
+    inspection_status: 'Pending',
+    status: 'Pending_Inspection',
+    instrument_type: 'Platform Scale (500 kg)',
+  },
+  'LMO/2026/10006': {
+    id: 6,
+    trader_name: 'Haryana Gold & Diamond Jewelers',
+    shop_name: 'Haryana Gold & Diamond Jewelers',
+    owner_name: 'Vikram Soni',
+    license_number: 'LMO/2026/10006',
+    district: 'Rohtak',
+    inspection_status: 'Pending',
+    status: 'Scheduled',
+    instrument_type: 'High Precision Gold Balance',
+  },
+  'LMO/2026/10007': {
+    id: 7,
+    trader_name: 'Karnal Cotton & Ginning Mill',
+    shop_name: 'Karnal Cotton & Ginning Mill',
+    owner_name: 'Wallace Hintz',
+    license_number: 'LMO/2026/10007',
+    district: 'Rohtak',
+    inspection_status: 'Passed',
+    status: 'Verified',
     instrument_type: 'Weighbridge',
   },
-  'LMO/2026/10005': {
-    trader_name: 'Delhi NCR Fuel Station & Logistics',
-    owner_name: 'Ms. Marian Spinka',
-    license_number: 'LMO/2026/10005',
+  'LMO/2026/10008': {
+    id: 8,
+    trader_name: 'Delhi Bypass Petrol & Diesel Fuel Station',
+    shop_name: 'Delhi Bypass Petrol & Diesel Fuel Station',
+    owner_name: 'Baljeet Singh',
+    license_number: 'LMO/2026/10008',
+    district: 'Rohtak',
     inspection_status: 'Passed',
+    status: 'Approved',
+    instrument_type: 'Fuel Dispenser Meter',
+  },
+
+  // South Delhi Jurisdiction
+  'LMO/2026/10009': {
+    id: 9,
+    trader_name: 'Saket Provision & Retail Supermarket',
+    shop_name: 'Saket Provision & Retail Supermarket',
+    owner_name: 'Ramesh Varma',
+    license_number: 'LMO/2026/10009',
+    district: 'South Delhi',
+    inspection_status: 'Pending',
+    status: 'Pending_Inspection',
+    instrument_type: 'Electronic Counter Scale',
+  },
+  'LMO/2026/10010': {
+    id: 10,
+    trader_name: 'Hauz Khas Agro Flour & Pulses',
+    shop_name: 'Hauz Khas Agro Flour & Pulses',
+    owner_name: 'Sunil Mathur',
+    license_number: 'LMO/2026/10010',
+    district: 'South Delhi',
+    inspection_status: 'Pending',
+    status: 'Scheduled',
+    instrument_type: 'Platform Scale (300 kg)',
+  },
+  'LMO/2026/10011': {
+    id: 11,
+    trader_name: 'Delhi NCR Fuel Station & Logistics',
+    shop_name: 'Delhi NCR Fuel Station & Logistics',
+    owner_name: 'Ms. Marian Spinka',
+    license_number: 'LMO/2026/10011',
+    district: 'South Delhi',
+    inspection_status: 'Passed',
+    status: 'Verified',
     instrument_type: 'Fuel Dispenser',
+  },
+  'LMO/2026/10012': {
+    id: 12,
+    trader_name: 'Precision Analytical Labs Okhla',
+    shop_name: 'Precision Analytical Labs Okhla',
+    owner_name: 'Dr. Priya Sharma',
+    license_number: 'LMO/2026/10012',
+    district: 'South Delhi',
+    inspection_status: 'Passed',
+    status: 'Approved',
+    instrument_type: 'Analytical Precision Balance',
   },
 };
 
@@ -119,14 +223,20 @@ try {
       if (cols.length >= 7) {
         const [trader_name, owner_name, license_number, latitude, longitude, inspection_status, instrument_type] = cols;
         if (!SAMPLE_MOCK_TRADERS[license_number]) {
+          const districtPool = ['Hisar', 'Rohtak', 'South Delhi', 'Gurugram'];
+          const assignedDistrict = districtPool[i % districtPool.length];
+          const cleanStatus = inspection_status.trim();
           SAMPLE_MOCK_TRADERS[license_number] = {
             id: i,
             trader_name: trader_name.trim(),
+            shop_name: trader_name.trim(),
             owner_name: owner_name.trim(),
             license_number: license_number.trim(),
+            district: assignedDistrict,
             latitude: parseFloat(latitude) || 28.6139,
             longitude: parseFloat(longitude) || 77.2090,
-            inspection_status: inspection_status.trim(),
+            inspection_status: cleanStatus,
+            status: cleanStatus === 'Passed' ? 'Approved' : cleanStatus === 'Pending' ? 'Pending_Inspection' : cleanStatus,
             instrument_type: instrument_type.trim(),
           };
         }
@@ -161,10 +271,13 @@ app.get('/', (req, res) => {
 });
 
 /**
- * Helper to query Supabase checking both 'traders' and 'lmo_mock_traders' table names
+ * Helper to query Supabase checking 'traders_list', 'traders', and 'lmo_mock_traders' table names
  */
 async function queryTradersTable(buildQuery) {
-  let res = await buildQuery('traders');
+  let res = await buildQuery('traders_list');
+  if (res.error && res.error.message && res.error.message.includes('Could not find the table')) {
+    res = await buildQuery('traders');
+  }
   if (res.error && res.error.message && res.error.message.includes('Could not find the table')) {
     res = await buildQuery('lmo_mock_traders');
   }
@@ -173,18 +286,22 @@ async function queryTradersTable(buildQuery) {
 
 /**
  * GET /api/traders
- * Fetches trader records from Supabase 'traders' or 'lmo_mock_traders' table with a 100-row limit
+ * Supports filtering by ?district=Hisar and ?status=Pending/Passed/etc.
  */
 app.get('/api/traders', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit, 10) || 100;
     const status = req.query.status;
+    const district = req.query.district;
 
     if (supabase && isSupabaseConfigured) {
       const { data, error } = await queryTradersTable((tableName) => {
         let q = supabase.from(tableName).select('*').limit(limit);
         if (status) {
-          q = q.eq('inspection_status', status);
+          q = q.or(`inspection_status.eq.${status},status.eq.${status}`);
+        }
+        if (district) {
+          q = q.ilike('district', `%${district}%`);
         }
         return q;
       });
@@ -202,11 +319,67 @@ app.get('/api/traders', async (req, res) => {
       }
     }
 
-    // Fallback to local mock traders database
+    // Fallback to local mock traders database with strict status & district filtering
     let mockList = Object.values(SAMPLE_MOCK_TRADERS);
+    if (district) {
+      mockList = mockList.filter(
+        (t) => (t.district || '').toLowerCase() === district.toLowerCase()
+      );
+      if (mockList.length === 0) {
+        const code = district.substring(0, 3).toUpperCase();
+        mockList = [
+          {
+            id: 101,
+            trader_name: `${district} General Provision Store`,
+            shop_name: `${district} General Provision Store`,
+            owner_name: 'Rajesh Kumar',
+            license_number: `HR-LMO-${code}-2026-101`,
+            district: district,
+            inspection_status: 'Pending',
+            status: 'Pending_Inspection',
+            instrument_type: 'Electronic Counter Scale',
+          },
+          {
+            id: 102,
+            trader_name: `${district} Wholesale Agro Mandi`,
+            shop_name: `${district} Wholesale Agro Mandi`,
+            owner_name: 'Suresh Verma',
+            license_number: `HR-LMO-${code}-2026-102`,
+            district: district,
+            inspection_status: 'Pending',
+            status: 'Scheduled',
+            instrument_type: 'Platform Scale (500 kg)',
+          },
+          {
+            id: 103,
+            trader_name: `${district} Jewelers & Precious Metals`,
+            shop_name: `${district} Jewelers & Precious Metals`,
+            owner_name: 'Vikram Soni',
+            license_number: `HR-LMO-${code}-2026-103`,
+            district: district,
+            inspection_status: 'Passed',
+            status: 'Verified',
+            instrument_type: 'High Precision Balance',
+          },
+          {
+            id: 104,
+            trader_name: `${district} Petroleum & Logistics Depot`,
+            shop_name: `${district} Petroleum & Logistics Depot`,
+            owner_name: 'Dr. Priya Sharma',
+            license_number: `HR-LMO-${code}-2026-104`,
+            district: district,
+            inspection_status: 'Passed',
+            status: 'Approved',
+            instrument_type: 'Fuel Dispenser Meter',
+          },
+        ];
+      }
+    }
     if (status) {
       mockList = mockList.filter(
-        (t) => (t.inspection_status || '').toLowerCase() === status.toLowerCase()
+        (t) =>
+          (t.inspection_status || '').toLowerCase() === status.toLowerCase() ||
+          (t.status || '').toLowerCase() === status.toLowerCase()
       );
     }
     const sliced = mockList.slice(0, limit);

@@ -23,6 +23,9 @@ export interface TraderRecord {
   license_number: string;
   district?: string;
   status?: string;
+  inspection_status?: string;
+  scheduled_date?: string;
+  scheduled_slot?: string;
   address?: string;
   instrument_type?: string;
   capacity?: string;
@@ -34,6 +37,8 @@ export interface TraderRecord {
   lmo_id?: string;
   digital_signature?: string;
   signed_at?: string;
+  seal_number?: string;
+  verification_notes?: string;
   rejection_reason?: string;
   created_at?: string;
   updated_at?: string;
