@@ -280,7 +280,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                               </Link>
                             ) : (
                               <Link
-                                href="/admin/traders"
+                                href="/lmo"
                                 onClick={() => setShowAlerts(false)}
                                 className="text-indigo-900 font-bold hover:underline"
                               >
@@ -309,11 +309,11 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                       </Link>
                     ) : (
                       <Link
-                        href="/admin/traders"
+                        href="/lmo"
                         onClick={() => setShowAlerts(false)}
                         className="text-xs font-bold text-[#002B49] hover:underline"
                       >
-                        View All in Central Registry →
+                        Open LMO Verification Portal →
                       </Link>
                     )}
                     <button
@@ -401,7 +401,10 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                                 setCurrentUser(user);
                                 setShowRoleMenu(false);
                                 if (user.role === 'APPLICANT') setActiveTab('applicant-dashboard');
-                                if (user.role === 'LMO') setActiveTab('officer-queue');
+                                if (user.role === 'LMO') {
+                                  setActiveTab('inspection_queue');
+                                  router.push('/lmo');
+                                }
                                 if (user.role === 'GATC') setActiveTab('gatc-queue');
                                 if (user.role === 'ADMIN') setActiveTab('admin-analytics');
                               }}
@@ -505,19 +508,40 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
           {mounted && currentUser.role === 'LMO' && (
             <>
               <TabButton
-                active={activeTab === 'officer-queue'}
-                onClick={() => setActiveTab('officer-queue')}
-                label="Inspection Queue (South Delhi)"
+                active={activeTab === 'inspection_queue' || activeTab === 'officer-queue'}
+                onClick={() => {
+                  setActiveTab('inspection_queue');
+                  router.push('/lmo');
+                }}
+                href="/lmo"
+                label="Inspection Queue"
               />
               <TabButton
-                active={activeTab === 'officer-calendar'}
-                onClick={() => setActiveTab('officer-calendar')}
+                active={activeTab === 'visit_schedule' || activeTab === 'officer-calendar'}
+                onClick={() => {
+                  setActiveTab('visit_schedule');
+                  router.push('/lmo');
+                }}
+                href="/lmo"
                 label="Visit Schedule"
               />
               <TabButton
-                active={activeTab === 'officer-history'}
-                onClick={() => setActiveTab('officer-history')}
-                label="Verified Certificates Issued"
+                active={activeTab === 'verified'}
+                onClick={() => {
+                  setActiveTab('verified');
+                  router.push('/lmo');
+                }}
+                href="/lmo"
+                label="Verified"
+              />
+              <TabButton
+                active={activeTab === 'certificates_issued' || activeTab === 'officer-history'}
+                onClick={() => {
+                  setActiveTab('certificates_issued');
+                  router.push('/lmo');
+                }}
+                href="/lmo"
+                label="Certificates Issued"
               />
             </>
           )}

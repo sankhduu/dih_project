@@ -172,22 +172,30 @@ export default function HomePage() {
                   </p>
                 </div>
 
-                {/* Primary Quick-Action Link to /admin/traders */}
+                {/* Primary Quick-Action Links */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
                   <Link
-                    href="/admin/traders"
+                    href="/lmo"
                     className="px-6 py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 group cursor-pointer"
                   >
-                    <FileSpreadsheet className="w-4 h-4 text-slate-950" />
-                    <span>Manage Trader Database</span>
+                    <ShieldCheck className="w-4 h-4 text-slate-950" />
+                    <span>LMO Inspector Portal</span>
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+
+                  <Link
+                    href="/admin/traders"
+                    className="px-5 py-3.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm rounded-2xl border border-white/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-amber-300" />
+                    <span>Trader Registry</span>
                   </Link>
 
                   <button
                     onClick={() => setActiveTab('public-verify')}
-                    className="px-5 py-3.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm rounded-2xl border border-white/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    className="px-4 py-3.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white font-semibold text-xs sm:text-sm rounded-2xl border border-white/10 transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <span>Public QR Scan</span>
+                    <span>QR Scan</span>
                   </button>
                 </div>
               </div>
@@ -530,7 +538,23 @@ export default function HomePage() {
 
         {(activeTab === 'officer-queue' ||
           activeTab === 'officer-calendar' ||
-          activeTab === 'officer-history') && <OfficerDashboard />}
+          activeTab === 'officer-history' ||
+          activeTab === 'inspection_queue' ||
+          activeTab === 'visit_schedule' ||
+          activeTab === 'verified' ||
+          activeTab === 'certificates_issued') && (
+          <OfficerDashboard
+            initialTab={
+              activeTab === 'officer-calendar' || activeTab === 'visit_schedule'
+                ? 'visit_schedule'
+                : activeTab === 'officer-history' || activeTab === 'certificates_issued'
+                ? 'certificates_issued'
+                : activeTab === 'verified'
+                ? 'verified'
+                : 'inspection_queue'
+            }
+          />
+        )}
 
         {(activeTab === 'gatc-queue' || activeTab === 'gatc-accreditation') && <GATCDashboard />}
 

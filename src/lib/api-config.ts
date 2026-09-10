@@ -1,10 +1,31 @@
 /**
  * Global API configuration for backend services.
- * Defaults to '' (relative path) so that all requests hit native Next.js /api routes
- * on whatever domain the app is running (both localhost and live Vercel deployments),
- * avoiding Mixed Content (HTTP on HTTPS) and connection refused errors.
- * If NEXT_PUBLIC_API_URL is explicitly set to an external endpoint, it will use that instead.
+ * In a browser on a live website (any non-localhost domain like Vercel),
+ * it will NEVER attempt to call http://localhost:5000, even if NEXT_PUBLIC_API_URL
+ * was set in Vercel environment variables, avoiding 'Failed to fetch' errors.
  */
-export const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_URL || ''
-).replace(/\/$/, '');
+export function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    const isLocalhost =
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname.endsWith('.local');
+
+    if (!isLocalhost) {
+      const configured = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+      // If configured points to localhost or is empty, use native relative Next.js API routes ('')
+      if (!configured || configured.includes('localhost') || configured.includes('127.0.0.1')) {
+        return '';
+      }
+      return configured.replace(/\/$/, '');
+    }
+  }
+
+  const raw = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+  return raw.replace(/\/$/, '');
+}
+
+export const API_BASE_URL = getApiBaseUrl();
+

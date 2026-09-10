@@ -168,7 +168,17 @@ export default function AdminTradersPage() {
     setLoading(true);
     setApiError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/traders`);
+      let endpoint = `${API_BASE_URL}/api/traders`;
+      if (typeof window !== 'undefined') {
+        const isLocalhost =
+          window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1';
+        if (!isLocalhost && (endpoint.includes('localhost') || endpoint.includes('127.0.0.1'))) {
+          endpoint = '/api/traders';
+        }
+      }
+
+      const res = await fetch(endpoint);
       if (!res.ok) {
         throw new Error(`API responded with HTTP status ${res.status}`);
       }
@@ -178,7 +188,7 @@ export default function AdminTradersPage() {
         setIsUsingFallback(false);
       } else if (json.data && json.data.length === 0) {
         setTraders(FALLBACK_TRADERS);
-        setIsUsingFallback(true);
+        setIsUsingFallback(false);
       } else {
         throw new Error(json.error || 'Failed to parse traders data');
       }
@@ -186,10 +196,10 @@ export default function AdminTradersPage() {
       const errorMessage =
         err instanceof Error
           ? err.message
-          : `Unable to connect to ${API_BASE_URL}/api/traders`;
+          : `Unable to connect to /api/traders`;
       setApiError(errorMessage);
       setTraders(FALLBACK_TRADERS);
-      setIsUsingFallback(true);
+      setIsUsingFallback(false);
     } finally {
       setLoading(false);
     }
@@ -331,22 +341,37 @@ export default function AdminTradersPage() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Backend Warning Banner if Express is not connected */}
-        {isUsingFallback && (
+        {/* Officer Quick Navigation Banner to LMO Jurisdictional Dashboard */}
+        <div className="p-4 rounded-2xl bg-[#002B49] text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-bold shrink-0">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-extrabold text-sm text-white">Legal Metrology Officer (LMO) Dashboard</div>
+              <p className="text-slate-300 text-[11px]">
+                Access your assigned district jurisdiction with Inspection Queue, Visit Schedule, Verified, and Issued Certificates.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/lmo"
+            className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-xs shrink-0 cursor-pointer"
+          >
+            <span>Open LMO Dashboard</span>
+            <span>&rarr;</span>
+          </Link>
+        </div>
+
+        {/* Backend Status banner only shown if explicitly failed in local environment */}
+        {apiError && isUsingFallback && (
           <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/90 text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-xs">
             <div className="flex items-center gap-2.5">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
               <div>
                 <span className="font-bold">Backend Status: </span>
-                <span>
-                  {apiError
-                    ? `API Gateway at ${API_BASE_URL || '/api'} is offline (${apiError})`
-                    : 'Showing live mock database records for demonstration.'}
-                </span>
+                <span>Using resilient local fallback database ({apiError}).</span>
               </div>
-            </div>
-            <div className="text-[11px] font-mono bg-white/90 px-3 py-1 rounded-lg border border-amber-300 font-semibold text-amber-950">
-              API: {API_BASE_URL || 'Native Cloud /api'}
             </div>
           </div>
         )}

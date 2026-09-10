@@ -56,7 +56,7 @@ const DEMO_CREDENTIALS = {
     password: 'password123',
     name: 'Shri Rajesh Varma (LMO)',
     description: 'Senior Legal Metrology Officer',
-    targetRoute: '/admin/traders',
+    targetRoute: '/lmo',
     mockUser: MOCK_USERS[2],
   },
   GATC: {
@@ -270,7 +270,7 @@ function AuthFormContent() {
             ? '/trader'
             : demoConfig.role === 'GATC'
             ? '/gatc/dashboard'
-            : '/admin/traders');
+            : '/lmo');
         executeRedirect(target);
         return;
       }
@@ -378,15 +378,20 @@ function AuthFormContent() {
         case 'lmo':
         case 'lmo officer':
         case 'officer':
+          targetRoute = '/lmo';
+          break;
+
         case 'admin':
           targetRoute = '/admin/traders';
           break;
 
         default:
-          if (roleKey.includes('lmo') || roleKey.includes('officer') || roleKey.includes('admin')) {
-            targetRoute = '/admin/traders';
+          if (roleKey.includes('lmo') || roleKey.includes('officer')) {
+            targetRoute = '/lmo';
           } else if (roleKey.includes('gatc')) {
             targetRoute = '/gatc/dashboard';
+          } else if (roleKey.includes('admin')) {
+            targetRoute = '/admin/traders';
           } else {
             targetRoute = '/trader';
           }
@@ -783,7 +788,7 @@ function AuthFormContent() {
                     </select>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">
-                    Directs to statutory dashboard: {signupRole === 'Trader' ? '/trader/dashboard' : signupRole === 'LMO Officer' ? '/admin/traders' : '/gatc/dashboard'}
+                    Directs to statutory dashboard: {signupRole === 'Trader' ? '/trader/dashboard' : signupRole === 'LMO Officer' ? '/lmo' : '/gatc/dashboard'}
                   </p>
                 </div>
 
@@ -863,7 +868,7 @@ function AuthFormContent() {
                     lmo@demo.com
                   </div>
                   <div className="text-[9px] text-slate-400 mt-0.5">
-                    → /admin/traders
+                    → /lmo
                   </div>
                 </button>
 

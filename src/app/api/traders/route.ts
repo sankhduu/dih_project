@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase-client';
 import { getMockTradersList } from '@/lib/mock-traders';
 
@@ -11,13 +11,52 @@ export async function GET(req: NextRequest) {
     // Attempt Supabase fetch
     if (supabase) {
       try {
+        // 1. First attempt traders_list (active legal metrology verification table)
+        const { data: listData, error: listError } = await supabase
+          .from('traders_list')
+          .select('*')
+          .limit(limit);
+
+        if (!listError && listData && listData.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let rows = listData.map((t: any) => ({
+            id: t.id,
+            trader_name: t.shop_name || t.trader_name || 'Registered Trader',
+            owner_name: t.owner_name || '',
+            license_number: t.license_number,
+            latitude: t.latitude || 28.6139,
+            longitude: t.longitude || 77.209,
+            district: t.district || 'Hisar',
+            inspection_status:
+              t.status === 'Approved'
+                ? 'Passed'
+                : t.status === 'Verified'
+                ? 'Passed'
+                : t.status === 'Scheduled'
+                ? 'Pending'
+                : t.status || 'Pending',
+            instrument_type: t.instrument_type || 'Electronic Scale',
+            assigned_officer: t.lmo_id || '',
+          }));
+
+          if (status && status !== 'All') {
+            rows = rows.filter((r) => r.inspection_status.toLowerCase() === status.toLowerCase());
+          }
+
+          return NextResponse.json({
+            success: true,
+            count: rows.length,
+            data: rows,
+          });
+        }
+
+        // 2. Fallback to 'traders' or 'lmo_mock_traders'
         let query = supabase.from('traders').select('*').limit(limit);
         if (status && status !== 'All') {
           query = query.eq('inspection_status', status);
         }
         let { data, error } = await query;
 
-        // Try fallback table name 'lmo_mock_traders' if 'traders' is missing
         if (error && error.message?.includes('Could not find the table')) {
           let fallbackQ = supabase.from('lmo_mock_traders').select('*').limit(limit);
           if (status && status !== 'All') {

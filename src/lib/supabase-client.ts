@@ -51,9 +51,16 @@ export function normalizeUserRole(rawRole?: string): {
   if (
     normalized === 'LMO' ||
     normalized === 'LMO OFFICER' ||
-    normalized.includes('OFFICER') ||
-    normalized === 'ADMIN'
+    normalized.includes('OFFICER')
   ) {
+    return {
+      storeRole: 'LMO',
+      displayRole: 'LMO Officer',
+      redirectPath: '/lmo',
+    };
+  }
+
+  if (normalized === 'ADMIN') {
     return {
       storeRole: 'LMO',
       displayRole: 'LMO Officer',
