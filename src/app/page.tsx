@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase-client';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { useMetrologyStore } from '@/lib/store';
+import { API_BASE_URL } from '@/lib/api-config';
 import { ApplicantDashboard } from '@/components/applicant/ApplicantDashboard';
 import { ApplicationTracker } from '@/components/applicant/ApplicationTracker';
 import { OfficerDashboard } from '@/components/officer/OfficerDashboard';
@@ -80,7 +81,7 @@ export default function HomePage() {
     async function fetchStats() {
       setLoading(true);
       try {
-        const res = await fetch('http://localhost:5000/api/traders?limit=100');
+        const res = await fetch(`${API_BASE_URL}/api/traders?limit=100`);
         if (res.ok) {
           const json = await res.json();
           if (json.success && Array.isArray(json.data) && json.data.length > 0) {
@@ -383,7 +384,7 @@ export default function HomePage() {
                             <td className="px-4 py-3.5 text-right">
                               {isPassed ? (
                                 <a
-                                  href={`http://localhost:5000/api/certificate/${encodeURIComponent(t.license_number)}`}
+                                  href={`${API_BASE_URL}/api/certificate/${encodeURIComponent(t.license_number)}`}
                                   download
                                   target="_blank"
                                   rel="noopener noreferrer"

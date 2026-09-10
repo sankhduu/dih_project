@@ -1,4 +1,6 @@
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
@@ -14,12 +16,33 @@ const upload = multer({
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Enable CORS for Next.js, Flutter Web/Mobile, and other clients
+// Enable CORS for Next.js (port 3000), Flutter Web/Mobile, and other clients
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: '*', // Allows requests from Next.js (localhost:3000), Flutter, etc.
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, Flutter, Postman, curl)
+      if (!origin) return callback(null, true);
+
+      // Explicitly allow Port 3000 or any localhost port
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.startsWith('http://localhost:') ||
+        origin.startsWith('http://127.0.0.1:')
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(null, true);
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    credentials: true,
   })
 );
 
@@ -83,6 +106,37 @@ const SAMPLE_MOCK_TRADERS = {
   },
 };
 
+// Populate SAMPLE_MOCK_TRADERS from lmo_mock_traders.csv if present
+try {
+  const csvPath = path.join(__dirname, 'lmo_mock_traders.csv');
+  if (fs.existsSync(csvPath)) {
+    const csvContent = fs.readFileSync(csvPath, 'utf8');
+    const rows = csvContent.split(/\r?\n/);
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i].trim();
+      if (!row) continue;
+      const cols = row.split(',');
+      if (cols.length >= 7) {
+        const [trader_name, owner_name, license_number, latitude, longitude, inspection_status, instrument_type] = cols;
+        if (!SAMPLE_MOCK_TRADERS[license_number]) {
+          SAMPLE_MOCK_TRADERS[license_number] = {
+            id: i,
+            trader_name: trader_name.trim(),
+            owner_name: owner_name.trim(),
+            license_number: license_number.trim(),
+            latitude: parseFloat(latitude) || 28.6139,
+            longitude: parseFloat(longitude) || 77.2090,
+            inspection_status: inspection_status.trim(),
+            instrument_type: instrument_type.trim(),
+          };
+        }
+      }
+    }
+  }
+} catch (csvErr) {
+  console.warn('⚠️ Could not load lmo_mock_traders.csv:', csvErr.message);
+}
+
 // Clean text for WinAnsi PDF encoding (strips non-ASCII accents)
 function toWinAnsi(str) {
   if (!str) return '';
@@ -123,38 +177,44 @@ async function queryTradersTable(buildQuery) {
  */
 app.get('/api/traders', async (req, res) => {
   try {
-    if (!supabase || !isSupabaseConfigured) {
-      return res.status(503).json({
-        success: false,
-        error: 'Supabase credentials not configured in .env',
-        message: 'Please set valid SUPABASE_URL and SUPABASE_ANON_KEY in your .env file.',
-      });
-    }
-
     const limit = parseInt(req.query.limit, 10) || 100;
     const status = req.query.status;
 
-    const { data, error } = await queryTradersTable((tableName) => {
-      let q = supabase.from(tableName).select('*').limit(limit);
-      if (status) {
-        q = q.eq('inspection_status', status);
-      }
-      return q;
-    });
-
-    if (error) {
-      console.error('Error fetching traders from Supabase:', error);
-      return res.status(500).json({
-        success: false,
-        error: error.message,
-        details: error.details || null,
+    if (supabase && isSupabaseConfigured) {
+      const { data, error } = await queryTradersTable((tableName) => {
+        let q = supabase.from(tableName).select('*').limit(limit);
+        if (status) {
+          q = q.eq('inspection_status', status);
+        }
+        return q;
       });
+
+      if (!error && data && data.length > 0) {
+        return res.status(200).json({
+          success: true,
+          count: data.length,
+          data,
+        });
+      }
+
+      if (error) {
+        console.warn('⚠️ Supabase fetch warning on /api/traders (falling back to mock database):', error.message);
+      }
     }
 
+    // Fallback to local mock traders database
+    let mockList = Object.values(SAMPLE_MOCK_TRADERS);
+    if (status) {
+      mockList = mockList.filter(
+        (t) => (t.inspection_status || '').toLowerCase() === status.toLowerCase()
+      );
+    }
+    const sliced = mockList.slice(0, limit);
     return res.status(200).json({
       success: true,
-      count: data ? data.length : 0,
-      data: data || [],
+      count: sliced.length,
+      data: sliced,
+      fallback: true,
     });
   } catch (err) {
     console.error('Server error on /api/traders:', err);
@@ -323,53 +383,53 @@ app.patch('/api/traders/:id/assign', handleTraderPatch);
 app.get('/api/traders/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const decodedId = decodeURIComponent(id).trim();
 
-    if (!supabase || !isSupabaseConfigured) {
-      return res.status(503).json({
-        success: false,
-        error: 'Supabase credentials not configured in .env',
-        message: 'Please set valid SUPABASE_URL and SUPABASE_ANON_KEY in your .env file.',
-      });
-    }
-
-    const decodedId = decodeURIComponent(id);
-
-    const { data, error } = await queryTradersTable(async (tableName) => {
-      let result = await supabase
-        .from(tableName)
-        .select('*')
-        .eq('id', decodedId)
-        .maybeSingle();
-
-      if (!result.data && !result.error) {
-        result = await supabase
+    if (supabase && isSupabaseConfigured) {
+      const { data, error } = await queryTradersTable(async (tableName) => {
+        let result = await supabase
           .from(tableName)
           .select('*')
-          .eq('license_number', decodedId)
+          .eq('id', decodedId)
           .maybeSingle();
+
+        if (!result.data && !result.error) {
+          result = await supabase
+            .from(tableName)
+            .select('*')
+            .eq('license_number', decodedId)
+            .maybeSingle();
+        }
+        return result;
+      });
+
+      if (!error && data) {
+        return res.status(200).json({
+          success: true,
+          data: data,
+        });
       }
-      return result;
-    });
+    }
 
-    if (error) {
-      console.error(`Error fetching trader ${id}:`, error);
-      return res.status(500).json({
-        success: false,
-        error: error.message,
+    // Fallback: check SAMPLE_MOCK_TRADERS
+    const mockTrader =
+      SAMPLE_MOCK_TRADERS[decodedId] ||
+      Object.values(SAMPLE_MOCK_TRADERS).find(
+        (t) => String(t.id) === decodedId || t.license_number === decodedId
+      );
+
+    if (mockTrader) {
+      return res.status(200).json({
+        success: true,
+        data: mockTrader,
+        fallback: true,
       });
     }
 
-    if (!data) {
-      return res.status(404).json({
-        success: false,
-        error: 'Trader not found',
-        message: `No trader record found matching ID/license: ${id}`,
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: data,
+    return res.status(404).json({
+      success: false,
+      error: 'Trader not found',
+      message: `No trader record found matching ID/license: ${id}`,
     });
   } catch (err) {
     console.error(`Server error on /api/traders/${req.params.id}:`, err);

@@ -22,6 +22,7 @@ import {
   User,
   Check,
 } from 'lucide-react';
+import { API_BASE_URL } from '@/lib/api-config';
 
 interface Trader {
   id?: string | number;
@@ -167,7 +168,7 @@ export default function AdminTradersPage() {
     setLoading(true);
     setApiError(null);
     try {
-      const res = await fetch('http://localhost:5000/api/traders');
+      const res = await fetch(`${API_BASE_URL}/api/traders`);
       if (!res.ok) {
         throw new Error(`API responded with HTTP status ${res.status}`);
       }
@@ -182,7 +183,10 @@ export default function AdminTradersPage() {
         throw new Error(json.error || 'Failed to parse traders data');
       }
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Unable to connect to http://localhost:5000/api/traders';
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : `Unable to connect to ${API_BASE_URL}/api/traders`;
       setApiError(errorMessage);
       setTraders(FALLBACK_TRADERS);
       setIsUsingFallback(true);
@@ -206,7 +210,7 @@ export default function AdminTradersPage() {
 
     // 2. Send PATCH request to Express backend
     try {
-      const res = await fetch(`http://localhost:5000/api/traders/${encodeURIComponent(licenseNumber)}`, {
+      const res = await fetch(`${API_BASE_URL}/api/traders/${encodeURIComponent(licenseNumber)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assigned_officer: officerName }),
@@ -336,13 +340,13 @@ export default function AdminTradersPage() {
                 <span className="font-bold">Backend Status: </span>
                 <span>
                   {apiError
-                    ? `Express API at http://localhost:5000 is offline (${apiError})`
+                    ? `Express API at ${API_BASE_URL} is offline (${apiError})`
                     : 'Showing live mock database records for demonstration.'}
                 </span>
               </div>
             </div>
             <div className="text-[11px] font-mono bg-white/90 px-3 py-1 rounded-lg border border-amber-300 font-semibold text-amber-950">
-              API Port: 5000
+              API: {API_BASE_URL}
             </div>
           </div>
         )}
@@ -501,7 +505,7 @@ export default function AdminTradersPage() {
                   filteredTraders.map((t, idx) => {
                     const isPassed = (t.inspection_status || '').toLowerCase() === 'passed';
                     const isPending = (t.inspection_status || '').toLowerCase() === 'pending';
-                    const certificateDownloadUrl = `http://localhost:5000/api/certificate/${encodeURIComponent(t.license_number)}`;
+                    const certificateDownloadUrl = `${API_BASE_URL}/api/certificate/${encodeURIComponent(t.license_number)}`;
 
                     return (
                       <tr

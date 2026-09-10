@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase-client';
 import { useMetrologyStore } from '@/lib/store';
+import { API_BASE_URL } from '@/lib/api-config';
 import { UserRole } from '@/types/metrology';
 import {
   Scale,
@@ -67,7 +68,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
 
     async function fetchExpiringTraders() {
       try {
-        const res = await fetch('http://localhost:5000/api/traders');
+        const res = await fetch(`${API_BASE_URL}/api/traders`);
         if (res.ok) {
           const json = await res.json();
           if (json.success && Array.isArray(json.data)) {
