@@ -340,13 +340,13 @@ export default function AdminTradersPage() {
                 <span className="font-bold">Backend Status: </span>
                 <span>
                   {apiError
-                    ? `Express API at ${API_BASE_URL} is offline (${apiError})`
+                    ? `API Gateway at ${API_BASE_URL || '/api'} is offline (${apiError})`
                     : 'Showing live mock database records for demonstration.'}
                 </span>
               </div>
             </div>
             <div className="text-[11px] font-mono bg-white/90 px-3 py-1 rounded-lg border border-amber-300 font-semibold text-amber-950">
-              API: {API_BASE_URL}
+              API: {API_BASE_URL || 'Native Cloud /api'}
             </div>
           </div>
         )}
