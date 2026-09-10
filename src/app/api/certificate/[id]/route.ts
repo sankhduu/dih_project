@@ -1,10 +1,10 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import QRCode from 'qrcode';
 import { supabase } from '@/lib/supabase-client';
 import { getMockTraderById } from '@/lib/mock-traders';
 
-function toWinAnsi(str: any) {
+function toWinAnsi(str: unknown) {
   if (!str) return '';
   return String(str)
     .normalize('NFD')
@@ -20,6 +20,7 @@ export async function GET(
     const { id } = await params;
     const licenseNumber = decodeURIComponent(id).trim();
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let trader: any = null;
 
     // 1. Fetch from Supabase if configured
