@@ -291,7 +291,7 @@ export default function GatcDashboardPage() {
       const statusNorm = (s.status || '').toLowerCase();
       let matchesStatus = true;
       if (selectedStatus === 'Under_Review') {
-        matchesStatus = statusNorm === 'under_review';
+        matchesStatus = statusNorm === 'under_review' || statusNorm === 'verified';
       } else if (selectedStatus === 'Approved') {
         matchesStatus = statusNorm === 'approved';
       } else if (selectedStatus === 'Pending_Inspection') {
@@ -319,7 +319,10 @@ export default function GatcDashboardPage() {
   }, [shops, selectedDistrict]);
 
   const totalCount = districtScopedShops.length;
-  const underReviewCount = districtScopedShops.filter((s) => (s.status || '').toLowerCase() === 'under_review').length;
+  const underReviewCount = districtScopedShops.filter((s) => {
+    const sn = (s.status || '').toLowerCase();
+    return sn === 'under_review' || sn === 'verified';
+  }).length;
   const approvedCount = districtScopedShops.filter((s) => (s.status || '').toLowerCase() === 'approved').length;
   const pendingInspectionCount = districtScopedShops.filter(
     (s) => (s.status || '').toLowerCase() === 'pending_inspection' || (s.status || '').toLowerCase() === 'pending'
@@ -774,7 +777,7 @@ export default function GatcDashboardPage() {
                       filteredShops.map((shop) => {
                         const statusNorm = (shop.status || '').toLowerCase();
                         const isAppr = statusNorm === 'approved';
-                        const isUnder = statusNorm === 'under_review';
+                        const isUnder = statusNorm === 'under_review' || statusNorm === 'verified';
                         const isRej = statusNorm === 'rejected';
                         const isPend = statusNorm === 'pending_inspection' || statusNorm === 'pending';
                         const rowKey = (shop.id || shop.license_number).toString();
@@ -937,21 +940,30 @@ export default function GatcDashboardPage() {
                       })
                     ) : (
                       <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                          <div className="max-w-sm mx-auto space-y-2">
-                            <Search className="w-8 h-8 text-slate-300 mx-auto" />
-                            <p className="font-bold text-slate-700 text-sm">No Applications Match Filter</p>
-                            <p className="text-xs text-slate-400">
-                              No records found for status &quot;{selectedStatus}&quot; matching query &quot;{searchQuery}&quot;.
-                            </p>
+                        <td colSpan={7} className="px-6 py-14 text-center text-slate-500">
+                          <div className="max-w-md mx-auto space-y-3">
+                            <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                              <Building2 className="w-6 h-6 text-slate-400" />
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-700 text-base">
+                                No pending applications in this jurisdiction
+                              </p>
+                              <p className="text-xs text-slate-400 mt-1">
+                                {selectedDistrict !== 'All'
+                                  ? `No pending applications found in the ${selectedDistrict} jurisdiction.`
+                                  : `There are currently no records matching status "${selectedStatus.replace('_', ' ')}" in the registry.`}
+                              </p>
+                            </div>
                             <button
                               onClick={() => {
                                 setSelectedStatus('All');
+                                setSelectedDistrict('All');
                                 setSearchQuery('');
                               }}
                               className="mt-2 px-4 py-1.5 text-xs font-bold text-[#002B49] bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
                             >
-                              Reset Filters
+                              Reset Jurisdiction &amp; Status Filters
                             </button>
                           </div>
                         </td>

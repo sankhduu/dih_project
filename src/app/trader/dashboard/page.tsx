@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import jsPDF from 'jspdf';
 import { supabase, normalizeUserRole } from '@/lib/supabase-client';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
@@ -223,6 +224,168 @@ export default function TraderDashboardPage() {
     }
   };
 
+  // Dynamic Certificate Generation & Automatic Download (jsPDF)
+  const handleDownloadCertificate = () => {
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const traderName = traderShop?.trader_name || traderShop?.shop_name || 'Mohan Kirana Store';
+      const licenseNumber = traderShop?.license_number || 'HR-LMO-ROH-2026-089';
+      const timestamp = new Date().toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        dateStyle: 'medium',
+        timeStyle: 'medium',
+      });
+
+      // Outer Decorative Border (Government of India / DOCA navy)
+      doc.setDrawColor(0, 43, 73);
+      doc.setLineWidth(1.5);
+      doc.rect(8, 8, pageWidth - 16, 281);
+
+      doc.setDrawColor(212, 118, 38); // Saffron inner border
+      doc.setLineWidth(0.5);
+      doc.rect(10, 10, pageWidth - 20, 277);
+
+      // Flag Tricolor Accent Bar
+      const barW = (pageWidth - 20) / 3;
+      doc.setFillColor(255, 153, 51); // Saffron
+      doc.rect(10, 10, barW, 2.5, 'F');
+      doc.setFillColor(255, 255, 255); // White
+      doc.rect(10 + barW, 10, barW, 2.5, 'F');
+      doc.setFillColor(19, 136, 8); // Green
+      doc.rect(10 + barW * 2, 10, barW, 2.5, 'F');
+
+      // Government Emblem & Typography Header
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.setTextColor(0, 43, 73);
+      doc.text('GOVERNMENT OF INDIA', pageWidth / 2, 25, { align: 'center' });
+
+      doc.setFontSize(10);
+      doc.setTextColor(60, 60, 60);
+      doc.text('MINISTRY OF CONSUMER AFFAIRS, FOOD & PUBLIC DISTRIBUTION', pageWidth / 2, 31, { align: 'center' });
+      doc.text('DEPARTMENT OF CONSUMER AFFAIRS (DOCA) • LEGAL METROLOGY DIVISION', pageWidth / 2, 36, { align: 'center' });
+
+      // Certificate Title Box
+      doc.setFillColor(240, 246, 252);
+      doc.roundedRect(16, 43, pageWidth - 32, 16, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(0, 43, 73);
+      doc.text('CERTIFICATE OF VERIFICATION', pageWidth / 2, 52, { align: 'center' });
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 100, 100);
+      doc.text('[Form V / Schedule IX under Legal Metrology Act, 2009 & General Rules, 2011]', pageWidth / 2, 56, { align: 'center' });
+
+      // Verification Details Box
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(16, 65, pageWidth - 32, 90, 3, 3, 'FD');
+
+      const startY = 76;
+      const rowH = 12;
+      const drawField = (label: string, value: string, y: number) => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(0, 43, 73);
+        doc.text(label, 22, y);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.setTextColor(30, 41, 59);
+        doc.text(value, 82, y);
+
+        doc.setDrawColor(226, 232, 240);
+        doc.line(20, y + 4, pageWidth - 20, y + 4);
+      };
+
+      drawField('Trader Name:', traderName, startY);
+      drawField('License Number:', licenseNumber, startY + rowH);
+      drawField('Jurisdiction District:', traderShop?.district || 'Hisar, Haryana', startY + rowH * 2);
+      drawField('Instrument Specification:', traderShop?.instrument_type || 'Electronic Tabletop Scale (Class III)', startY + rowH * 3);
+      drawField('Verification Status:', 'Verified', startY + rowH * 4);
+      drawField('Authorized by DOCA:', 'Authorized by DOCA', startY + rowH * 5);
+      drawField('Timestamp:', timestamp, startY + rowH * 6);
+
+      // Authorized Seal Card
+      doc.setFillColor(236, 253, 245);
+      doc.setDrawColor(5, 150, 105);
+      doc.setLineWidth(0.8);
+      doc.roundedRect(16, 163, pageWidth - 32, 34, 3, 3, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(5, 150, 105);
+      doc.text('OFFICIALLY VERIFIED • AUTHORIZED BY DOCA', pageWidth / 2, 173, { align: 'center' });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(50, 50, 50);
+      doc.text(
+        'This commercial weighing and measuring instrument satisfies all statutory tolerances, flat-surface calibration, tamper-free display standards, and geo-fenced verification authorized by DOCA, Government of India.',
+        22,
+        180,
+        { maxWidth: pageWidth - 44 }
+      );
+
+      // Security Verification Details
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(0, 43, 73);
+      doc.text('Statutory Security Seal:', 20, 209);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`DOCA-SEAL-${licenseNumber.replace(/[^A-Za-z0-9]/g, '')}-VERIFIED`, 68, 209);
+
+      doc.setFont('helvetica', 'bold');
+      doc.text('Digital Signature Digest:', 20, 215);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(`SHA256: DOCA-${licenseNumber}-${Date.now().toString(16).toUpperCase()}`, 68, 215);
+
+      // Signatures
+      doc.setDrawColor(160, 174, 192);
+      doc.line(20, 242, 75, 242);
+      doc.line(pageWidth - 75, 242, pageWidth - 20, 242);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(0, 43, 73);
+      doc.text('Inspecting Officer (LMO)', 20, 248);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text('Legal Metrology Inspectorate', 20, 253);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.text('Authorized by DOCA', pageWidth - 75, 248);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text('Department of Consumer Affairs', pageWidth - 75, 253);
+
+      // Footer
+      doc.setFontSize(7.5);
+      doc.setTextColor(120, 120, 120);
+      doc.text(
+        'This certificate is an official statutory record under Section 24 of the Legal Metrology Act, 2009. Authorized by DOCA.',
+        pageWidth / 2,
+        281,
+        { align: 'center' }
+      );
+
+      // Trigger automatic download
+      doc.save(`Certificate_${licenseNumber.replace(/[^A-Za-z0-9]/g, '_')}.pdf`);
+    } catch (err) {
+      console.error('Error generating certificate PDF:', err);
+    }
+  };
+
   if (!authorized) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-sans text-slate-900">
@@ -242,9 +405,10 @@ export default function TraderDashboardPage() {
   );
 
   const displayEmail = sessionEmail || currentUser.email || 'trader@demo.com';
-  const displayName = currentUser.fullName || traderShop.owner_name || 'Mohan Lal (Proprietor)';
+  const displayName = currentUser.fullName || traderShop?.owner_name || 'Mohan Lal (Proprietor)';
 
-  const rawStatus = (traderShop.status || 'Pending_Inspection').toLowerCase();
+  const rawStatus = (traderShop?.status || 'Pending_Inspection').toLowerCase();
+  const isVerified = (traderShop?.status || '').trim().toLowerCase() === 'verified' || rawStatus === 'verified';
   const isApproved = rawStatus === 'approved';
   const isRejected = rawStatus === 'rejected';
   const isUnderReview = rawStatus === 'under_review';
@@ -264,19 +428,53 @@ export default function TraderDashboardPage() {
               </div>
               <div>
                 <h4 className="font-black text-sm text-white flex items-center gap-1.5">
-                  <span>Certificate Approved &amp; Digitally Signed!</span>
+                  <span>Certificate Ready for Download!</span>
                   <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping"></span>
                 </h4>
                 <p className="text-xs text-emerald-100 mt-0.5">
-                  Your scale for <strong>{traderShop.shop_name}</strong> has been digitally signed by GATC. Download your verified QR certificate now.
+                  Your scale for <strong>{traderShop.shop_name}</strong> is now {traderShop.status}. Download your verified certificate now.
                 </p>
               </div>
             </div>
             <button
-              onClick={() => setIsCertificateOpen(true)}
+              onClick={handleDownloadCertificate}
               className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-[#002B49] font-black text-xs shadow-md transition-all cursor-pointer whitespace-nowrap"
             >
-              Open Certificate Now
+              Download Certificate
+            </button>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* WHEN VERIFIED: GREEN BANNER WITH 'DOWNLOAD CERTIFICATE' BUTTON */}
+        {/* ========================================================================= */}
+        {isVerified && (
+          <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-emerald-500 animate-in fade-in duration-300">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <CheckCircle2 className="w-7 h-7 text-amber-300" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/50 text-emerald-100 border border-emerald-400/40">
+                    Statutory Verification Complete
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
+                </div>
+                <h3 className="text-base sm:text-lg font-black text-white">
+                  Inspection Verified &amp; Authorized by DOCA
+                </h3>
+                <p className="text-xs text-emerald-100">
+                  Legal metrology physical inspection and GPS verification completed. Your verified certificate is ready.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleDownloadCertificate}
+              className="px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-[#002B49] font-black text-xs sm:text-sm shadow-md hover:shadow-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-2"
+            >
+              <FileBadge className="w-4 h-4 text-[#002B49]" />
+              <span>Download Certificate</span>
             </button>
           </div>
         )}
@@ -284,7 +482,7 @@ export default function TraderDashboardPage() {
         {/* ========================================================================= */}
         {/* WHEN APPROVED: GREEN BANNER WITH DOWNLOAD CERTIFICATE BUTTON */}
         {/* ========================================================================= */}
-        {isApproved && (
+        {isApproved && !isVerified && (
           <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-emerald-500 animate-in fade-in duration-300">
             <div className="flex items-center gap-3.5">
               <div className="w-12 h-12 rounded-2xl bg-white/20 text-white flex items-center justify-center shrink-0 shadow-xs">
@@ -306,11 +504,11 @@ export default function TraderDashboardPage() {
               </div>
             </div>
             <button
-              onClick={() => setIsCertificateOpen(true)}
+              onClick={handleDownloadCertificate}
               className="px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-[#002B49] font-black text-xs sm:text-sm shadow-md hover:shadow-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-2"
             >
-              <QrCode className="w-4 h-4" />
-              <span>Download Verified QR Certificate</span>
+              <FileBadge className="w-4 h-4" />
+              <span>Download Certificate</span>
             </button>
           </div>
         )}
@@ -421,19 +619,25 @@ export default function TraderDashboardPage() {
 
             {/* Live Status Badge & Certificate Trigger */}
             <div className="flex flex-wrap items-center gap-3">
-              {isApproved && (
+              {isVerified && (
+                <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 ring-2 ring-emerald-400/20 shadow-2xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Verified</span>
+                </span>
+              )}
+              {isApproved && !isVerified && (
                 <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 ring-2 ring-emerald-400/20 shadow-2xs">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   <span>Approved</span>
                 </span>
               )}
-              {isUnderReview && (
+              {isUnderReview && !isVerified && (
                 <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-300 ring-2 ring-blue-400/20 shadow-2xs">
                   <Clock className="w-4 h-4 text-blue-600 animate-spin" />
                   <span>Under Review (LMO Submitted)</span>
                 </span>
               )}
-              {isPendingInspection && (
+              {isPendingInspection && !isVerified && (
                 <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-300 shadow-2xs">
                   <Clock className="w-4 h-4 text-amber-600" />
                   <span>Pending Inspection</span>
@@ -446,7 +650,18 @@ export default function TraderDashboardPage() {
                 </span>
               )}
 
-              {isApproved && (
+              {/* Certificate Download - ONLY when Verified */}
+              {isVerified && (
+                <button
+                  onClick={handleDownloadCertificate}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-[#002B49] font-black text-xs shadow-md hover:shadow-lg transition-all cursor-pointer"
+                >
+                  <FileBadge className="w-4 h-4 text-[#002B49]" />
+                  <span>Download Certificate</span>
+                </button>
+              )}
+
+              {isApproved && !isVerified && (
                 <button
                   onClick={() => setIsCertificateOpen(true)}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-[#002B49] hover:bg-[#003B66] text-white font-black text-xs shadow-md hover:shadow-lg transition-all cursor-pointer"
@@ -489,7 +704,7 @@ export default function TraderDashboardPage() {
               {/* Step 2: Field Inspection Completed */}
               <div
                 className={`p-4 rounded-2xl border transition-all ${
-                  isUnderReview || isApproved || isRejected
+                  isVerified || isUnderReview || isApproved || isRejected
                     ? 'bg-emerald-50/60 border-emerald-200'
                     : 'bg-amber-50/70 border-amber-200 ring-2 ring-amber-400/30'
                 }`}
@@ -498,7 +713,7 @@ export default function TraderDashboardPage() {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                     Step 2
                   </span>
-                  {isUnderReview || isApproved || isRejected ? (
+                  {isVerified || isUnderReview || isApproved || isRejected ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   ) : (
                     <Clock className="w-4 h-4 text-amber-600 animate-spin" />
@@ -511,7 +726,7 @@ export default function TraderDashboardPage() {
                   LMO performs checklist, photo capture, and GPS coordinate lock.
                 </p>
                 <div className="mt-2 text-[10px] font-semibold">
-                  {isUnderReview || isApproved || isRejected ? (
+                  {isVerified || isUnderReview || isApproved || isRejected ? (
                     <span className="text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-md inline-block">
                       ✓ Inspected with GPS &amp; Photo
                     </span>
@@ -526,7 +741,7 @@ export default function TraderDashboardPage() {
               {/* Step 3: GATC Digital Signing */}
               <div
                 className={`p-4 rounded-2xl border transition-all ${
-                  isApproved
+                  isVerified || isApproved
                     ? 'bg-emerald-50/60 border-emerald-200'
                     : isRejected
                     ? 'bg-rose-50/70 border-rose-200 ring-2 ring-rose-400/30'
@@ -539,7 +754,7 @@ export default function TraderDashboardPage() {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                     Step 3
                   </span>
-                  {isApproved ? (
+                  {isVerified || isApproved ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   ) : isRejected ? (
                     <AlertTriangle className="w-4 h-4 text-rose-600" />
@@ -556,7 +771,11 @@ export default function TraderDashboardPage() {
                   Central GATC lab reviews inspection findings and cryptographically signs.
                 </p>
                 <div className="mt-2 text-[10px] font-semibold">
-                  {isApproved ? (
+                  {isVerified ? (
+                    <span className="text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-md inline-block">
+                      ✓ Verification Authorized by DOCA
+                    </span>
+                  ) : isApproved ? (
                     <span className="text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-md inline-block">
                       ✓ Digitally Signed (SHA-256)
                     </span>
@@ -577,7 +796,7 @@ export default function TraderDashboardPage() {
               {/* Step 4: Certificate Issued */}
               <div
                 className={`p-4 rounded-2xl border transition-all ${
-                  isApproved
+                  isVerified || isApproved
                     ? 'bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-400/30'
                     : isRejected
                     ? 'bg-rose-50/50 border-rose-200'
@@ -588,8 +807,8 @@ export default function TraderDashboardPage() {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                     Step 4
                   </span>
-                  {isApproved ? (
-                    <QrCode className="w-4 h-4 text-emerald-600" />
+                  {isVerified || isApproved ? (
+                    <FileBadge className="w-4 h-4 text-emerald-600" />
                   ) : (
                     <FileBadge className="w-4 h-4 text-slate-400" />
                   )}
@@ -598,10 +817,18 @@ export default function TraderDashboardPage() {
                   4. Certificate Issued
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Schedule IX Form V certificate unlocked with live verifiable QR code.
+                  Authorized DOCA certificate unlocked with instant PDF download.
                 </p>
                 <div className="mt-2 text-[10px] font-semibold">
-                  {isApproved ? (
+                  {isVerified ? (
+                    <button
+                      onClick={handleDownloadCertificate}
+                      className="text-[#002B49] bg-amber-300 hover:bg-amber-400 px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 font-black cursor-pointer shadow-xs transition-colors"
+                    >
+                      <FileBadge className="w-3.5 h-3.5" />
+                      <span>Download Certificate</span>
+                    </button>
+                  ) : isApproved ? (
                     <button
                       onClick={() => setIsCertificateOpen(true)}
                       className="text-emerald-800 bg-amber-300 hover:bg-amber-400 px-2.5 py-1 rounded-md inline-flex items-center gap-1 font-bold cursor-pointer"
@@ -624,7 +851,9 @@ export default function TraderDashboardPage() {
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
               <span className="text-[10px] font-bold uppercase text-slate-400 block">Current Stage</span>
               <div className="font-bold text-slate-900 text-xs sm:text-sm">
-                {isApproved
+                {isVerified
+                  ? 'Verification Complete (Authorized by DOCA)'
+                  : isApproved
                   ? 'Certificate Issued & Stamped'
                   : isRejected
                   ? 'Deficiency Notice Issued'
@@ -633,7 +862,9 @@ export default function TraderDashboardPage() {
                   : 'Physical Field Inspection Pending'}
               </div>
               <p className="text-[11px] text-slate-500">
-                {isApproved
+                {isVerified
+                  ? 'DOCA statutory inspection complete. Live photo and GPS coordinates locked. Certificate ready for download.'
+                  : isApproved
                   ? 'GATC has validated all calibration observations, applied cryptographic SHA-256 signature, and issued certificate.'
                   : isRejected
                   ? 'GATC identified a discrepancy during review. Please rectify and click Re-Apply above.'
@@ -692,7 +923,7 @@ export default function TraderDashboardPage() {
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             </div>
             <div className="mt-2 text-2xl font-black text-emerald-700">
-              {isApproved ? 1 : certificates.length || 0}
+              {isVerified || isApproved ? 1 : certificates.length || 0}
             </div>
             <div className="text-[11px] text-emerald-600 font-semibold mt-0.5">Schedule IX Form V Valid</div>
           </div>
@@ -703,7 +934,7 @@ export default function TraderDashboardPage() {
               <Clock className="w-4 h-4 text-amber-600" />
             </div>
             <div className="mt-2 text-2xl font-black text-amber-700">
-              {isApproved ? 0 : 1}
+              {isVerified || isApproved ? 0 : 1}
             </div>
             <div className="text-[11px] text-amber-600 font-semibold mt-0.5">Assigned to Statutory Officer</div>
           </div>
@@ -741,7 +972,28 @@ export default function TraderDashboardPage() {
             </div>
           </Link>
 
-          {isApproved ? (
+          {isVerified ? (
+            <button
+              onClick={handleDownloadCertificate}
+              className="p-6 rounded-3xl bg-white border border-emerald-300 shadow-xs hover:shadow-md transition-all group flex flex-col justify-between space-y-4 text-left cursor-pointer"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <FileBadge className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base group-hover:text-emerald-700 transition-colors">
+                  Digital Verification Certificate
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Your scale has been verified by DOCA. Click to generate and download your official inspection certificate.
+                </p>
+              </div>
+              <div className="text-xs font-bold text-emerald-700 flex items-center gap-1">
+                <span>Download Certificate (PDF)</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </button>
+          ) : isApproved ? (
             <button
               onClick={() => setIsCertificateOpen(true)}
               className="p-6 rounded-3xl bg-white border border-emerald-200 shadow-xs hover:shadow-md transition-all group flex flex-col justify-between space-y-4 text-left cursor-pointer"

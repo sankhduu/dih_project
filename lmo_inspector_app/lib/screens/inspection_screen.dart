@@ -3,17 +3,20 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class InspectionScreen extends StatefulWidget {
-  final Map<String, dynamic> trader;
+  final String traderName;
+  final String licenseNumber;
+  final Map<String, dynamic>? trader;
   final String? officerEmail;
 
   const InspectionScreen({
     super.key,
-    required this.trader,
+    required this.traderName,
+    required this.licenseNumber,
+    this.trader,
     this.officerEmail,
   });
 
@@ -179,7 +182,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
     }
 
     // Default fallback coordinates for Haryana/district if GPS is disabled or running in emulator
-    final district = (widget.trader['district'] ?? '').toString().toLowerCase();
+    final district = (widget.trader?['district'] ?? '').toString().toLowerCase();
     if (district.contains('hisar')) {
       _liveLatitude = 29.1492;
       _liveLongitude = 75.7217;
@@ -225,75 +228,74 @@ class _InspectionScreenState extends State<InspectionScreen> {
       if (proceed != true) return;
     }
 
+    if (!mounted) return;
+
     setState(() {
       _isSubmitting = true;
     });
 
-    // 1. Fetch exact GPS coordinates
-    await _fetchExactCoordinates();
-
-    final traderId = (widget.trader['id'] ?? widget.trader['license_number']).toString();
-    final licenseNumber = (widget.trader['license_number'] ?? traderId).toString();
-    final shopName = (widget.trader['shop_name'] ?? widget.trader['trader_name'] ?? 'Commercial Shop').toString();
-    final double lat = _liveLatitude ?? 28.8955;
-    final double lng = _liveLongitude ?? 76.6066;
-    final String lmoId = widget.officerEmail ?? 'officer.lmo@haryana.gov.in';
-    final String photoPath = _capturedImagePath ?? 'camera_live_proof_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-    // 2. Check network connectivity with connectivity_plus
-    bool isConnected = false;
-    try {
-      final List<ConnectivityResult> connectivityResults = await Connectivity().checkConnectivity();
-      isConnected = connectivityResults.any((result) => result != ConnectivityResult.none);
-    } catch (e) {
-      debugPrint('Connectivity check note: $e');
-    }
-
-    bool syncedOnline = false;
-
-    // 3. Online path: Update Supabase directly to Under_Review
-    if (isConnected) {
-      try {
-        final supabase = Supabase.instance.client;
-
-        await supabase.from('traders_list').update({
-          'status': 'Under_Review',
-          'latitude': lat,
-          'longitude': lng,
-          'updated_at': DateTime.now().toIso8601String(),
-          'photo_url': photoPath,
-          'checklist_confirmed': true,
-          'lmo_id': lmoId,
-        }).eq('id', traderId);
-
-        syncedOnline = true;
-        debugPrint('✅ Online sync to Supabase traders_list succeeded for trader: $traderId (Under_Review)');
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Row(
+    // 1. Show blocking dialog with CircularProgressIndicator to prevent double-clicks
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const PopScope(
+        canPop: false,
+        child: Center(
+          child: Card(
+            elevation: 8,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.send_rounded, color: Colors.white, size: 18),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text('Inspection forwarded to GATC for digital signature.'),
+                  CircularProgressIndicator(
+                    color: Color(0xFF002B49),
+                  ),
+                  SizedBox(height: 18),
+                  Text(
+                    'Submitting Inspection...',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF002B49),
+                    ),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'Uploading photo & locking GPS coordinates',
+                    style: TextStyle(fontSize: 11, color: Colors.black54),
                   ),
                 ],
               ),
-              backgroundColor: emeraldGreen,
-              duration: Duration(seconds: 4),
             ),
-          );
-        }
-      } catch (e) {
-        debugPrint('Online sync to Supabase failed or table not found, falling back to offline: $e');
-        syncedOnline = false;
+          ),
+        ),
+      ),
+    );
+
+    void dismissBlockingDialog() {
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
       }
     }
 
-    // 4. Offline path: Save inspection payload as JSON in SharedPreferences
-    if (!syncedOnline) {
+    final licenseNumber = widget.licenseNumber.isNotEmpty
+        ? widget.licenseNumber
+        : (widget.trader?['license_number'] ?? widget.trader?['id'] ?? 'LMO-2026').toString();
+    final traderId = (widget.trader?['id'] ?? licenseNumber).toString();
+    final shopName = widget.traderName.isNotEmpty
+        ? widget.traderName
+        : (widget.trader?['shop_name'] ?? widget.trader?['trader_name'] ?? 'Commercial Shop').toString();
+    final String lmoId = widget.officerEmail ?? 'officer.lmo@haryana.gov.in';
+    final String photoPath = _capturedImagePath ?? 'camera_live_proof_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+    // Local offline saver helper
+    Future<void> saveLocallyOffline({
+      required double lat,
+      required double lng,
+      required String savedPhotoUrl,
+    }) async {
       try {
         final SharedPreferences prefs = await SharedPreferences.getInstance();
         final List<String> offlineQueue = prefs.getStringList('offline_pending_approvals') ?? [];
@@ -302,19 +304,19 @@ class _InspectionScreenState extends State<InspectionScreen> {
           'id': traderId,
           'license_number': licenseNumber,
           'shop_name': shopName,
-          'status': 'Under_Review',
+          'status': 'Verified',
           'latitude': lat,
           'longitude': lng,
-          'photo_path': photoPath,
+          'photo_path': savedPhotoUrl,
           'timestamp': DateTime.now().toIso8601String(),
           'checklist_confirmed': true,
           'lmo_id': lmoId,
         };
 
-        // Remove duplicate if already present in offline queue
         offlineQueue.removeWhere((item) {
           try {
-            return jsonDecode(item)['id'] == traderId;
+            final decoded = jsonDecode(item);
+            return decoded['id'] == traderId || decoded['license_number'] == licenseNumber;
           } catch (_) {
             return false;
           }
@@ -322,35 +324,133 @@ class _InspectionScreenState extends State<InspectionScreen> {
 
         offlineQueue.add(jsonEncode(approvalRecord));
         await prefs.setStringList('offline_pending_approvals', offlineQueue);
-        debugPrint('📦 Stored in SharedPreferences offline_pending_approvals. Total queued: ${offlineQueue.length}');
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Row(
-                children: [
-                  Icon(Icons.wifi_off, color: Colors.white, size: 20),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text('Offline Mode: Inspection saved locally. Will auto-sync when network is restored.'),
-                  ),
-                ],
-              ),
-              backgroundColor: accentGold,
-              duration: Duration(seconds: 4),
-            ),
-          );
-        }
+        debugPrint('📦 Stored locally in offline queue. Total queued: ${offlineQueue.length}');
       } catch (e) {
-        debugPrint('Offline local storage note: $e');
+        debugPrint('Offline local storage error: $e');
+      }
+    }
+
+    double lat = 28.8955;
+    double lng = 76.6066;
+    bool syncedOnline = false;
+
+    try {
+      // 2. Fetch exact GPS coordinates
+      await _fetchExactCoordinates();
+      lat = _liveLatitude ?? 28.8955;
+      lng = _liveLongitude ?? 76.6066;
+
+      // 3. Upload Live Photo to Supabase Storage bucket ('inspections')
+      final supabase = Supabase.instance.client;
+      String uploadedPhotoUrl = photoPath;
+
+      if (_capturedImageFile != null && _capturedImageFile!.existsSync()) {
+        try {
+          final fileExt = _capturedImageFile!.path.split('.').last;
+          final sanitizedLic = licenseNumber.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+          final storagePath = 'inspection_${sanitizedLic}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+
+          await supabase.storage.from('inspections').upload(
+            storagePath,
+            _capturedImageFile!,
+            fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
+          );
+          uploadedPhotoUrl = supabase.storage.from('inspections').getPublicUrl(storagePath);
+          debugPrint('✅ Photo uploaded to Supabase Storage: $uploadedPhotoUrl');
+        } catch (storageErr) {
+          debugPrint('Supabase Storage notice (falling back to photo path): $storageErr');
+          // Fallback to local photo path or base64 without breaking database update
+        }
+      }
+
+      // 4. Update traders_list row with image URL, GPS coordinates, and set status to 'Verified'
+      await supabase.from('traders_list').update({
+        'status': 'Verified',
+        'latitude': lat,
+        'longitude': lng,
+        'updated_at': DateTime.now().toIso8601String(),
+        'photo_url': uploadedPhotoUrl,
+        'checklist_confirmed': true,
+        'lmo_id': lmoId,
+      }).eq(widget.trader?['id'] != null ? 'id' : 'license_number', widget.trader?['id'] ?? licenseNumber);
+
+      syncedOnline = true;
+      debugPrint('✅ Online sync to Supabase traders_list succeeded for trader: $traderId (Verified)');
+
+      dismissBlockingDialog();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text('Inspection verified and uploaded to central registry!'),
+                ),
+              ],
+            ),
+            backgroundColor: emeraldGreen,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } on SocketException catch (socketErr) {
+      // Catch network failure edge case
+      debugPrint('Network SocketException caught: $socketErr');
+      await saveLocallyOffline(lat: lat, lng: lng, savedPhotoUrl: photoPath);
+      dismissBlockingDialog();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.wifi_off, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text('Saved offline. Will sync automatically.'),
+                ),
+              ],
+            ),
+            backgroundColor: accentGold,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (generalErr) {
+      debugPrint('Submission error / offline fallback: $generalErr');
+      await saveLocallyOffline(lat: lat, lng: lng, savedPhotoUrl: photoPath);
+      dismissBlockingDialog();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.wifi_off, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text('Saved offline. Will sync automatically.'),
+                ),
+              ],
+            ),
+            backgroundColor: accentGold,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      dismissBlockingDialog();
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
       }
     }
 
     if (!mounted) return;
-
-    setState(() {
-      _isSubmitting = false;
-    });
 
     // 5. Official Verification Forwarded Dialog
     await showDialog(
@@ -366,12 +466,12 @@ class _InspectionScreenState extends State<InspectionScreen> {
                 color: emeraldGreen.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.send_rounded, color: emeraldGreen, size: 28),
+              child: const Icon(Icons.verified_rounded, color: emeraldGreen, size: 28),
             ),
             const SizedBox(width: 12),
             const Expanded(
               child: Text(
-                'Inspection Forwarded to GATC',
+                'Inspection Status: Verified',
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
@@ -386,7 +486,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Statutory physical inspection (5-point checklist, GPS coordinates, and photo proof) has been recorded and forwarded to GATC for cryptographic digital signing.',
+              'Statutory physical inspection (checklist, GPS coordinates, and photo proof) has been recorded and marked Verified.',
               style: TextStyle(fontSize: 13, color: Colors.black87),
             ),
             const SizedBox(height: 12),
@@ -410,12 +510,12 @@ class _InspectionScreenState extends State<InspectionScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: accentGold.withValues(alpha: 0.15),
+                          color: emeraldGreen.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Text(
-                          'Under_Review',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: accentGold),
+                          'Verified',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: emeraldGreen),
                         ),
                       ),
                     ],
@@ -441,7 +541,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
                       Expanded(
                         child: Text(
                           syncedOnline
-                              ? 'Forwarded live to GATC via Supabase'
+                              ? 'Verified live in Supabase registry'
                               : 'Saved locally in offline sync queue',
                           style: TextStyle(
                             fontSize: 11,
@@ -478,12 +578,16 @@ class _InspectionScreenState extends State<InspectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final shopName = (widget.trader['shop_name'] ?? widget.trader['trader_name'] ?? 'Commercial Shop').toString();
-    final ownerName = (widget.trader['owner_name'] ?? 'Proprietor').toString();
-    final licenseNumber = (widget.trader['license_number'] ?? widget.trader['id'] ?? 'LMO-2026').toString();
-    final district = (widget.trader['district'] ?? 'Rohtak').toString();
-    final address = (widget.trader['address'] ?? '$district, Haryana').toString();
-    final instrumentType = (widget.trader['instrument_type'] ?? 'Weighing Scale').toString();
+    final shopName = widget.traderName.isNotEmpty
+        ? widget.traderName
+        : (widget.trader?['shop_name'] ?? widget.trader?['trader_name'] ?? 'Commercial Shop').toString();
+    final ownerName = (widget.trader?['owner_name'] ?? widget.traderName).toString();
+    final licenseNumber = widget.licenseNumber.isNotEmpty
+        ? widget.licenseNumber
+        : (widget.trader?['license_number'] ?? widget.trader?['id'] ?? 'LMO-2026').toString();
+    final district = (widget.trader?['district'] ?? 'Hisar').toString();
+    final address = (widget.trader?['address'] ?? '$district, Haryana').toString();
+    final instrumentType = (widget.trader?['instrument_type'] ?? 'Weighing Scale').toString();
 
     return Scaffold(
       backgroundColor: bgSlate,
@@ -556,20 +660,26 @@ class _InspectionScreenState extends State<InspectionScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.storefront, color: primaryNavy, size: 18),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    shopName,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                      color: primaryNavy,
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.storefront, color: primaryNavy, size: 18),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        shopName,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          color: primaryNavy,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
+                              const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(

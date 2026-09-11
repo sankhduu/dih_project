@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login_screen.dart';
+import 'inspection_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String district;
@@ -157,8 +158,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
             subtitle: Text(instrumentType),
             trailing: const Icon(Icons.arrow_forward),
             onTap: () {
-              // ignore: avoid_print
-              print(licenseNumber);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => InspectionScreen(
+                    traderName: traderName,
+                    licenseNumber: licenseNumber,
+                    trader: trader,
+                    officerEmail: widget.officerEmail,
+                  ),
+                ),
+              );
             },
           ),
         );

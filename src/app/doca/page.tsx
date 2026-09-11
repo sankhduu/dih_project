@@ -164,6 +164,7 @@ export default function DocaDashboardPage() {
   const [users, setUsers] = useState<DocaTraderRecord[]>(SEED_DOCA_RECORDS);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
 
   // Fetch real-time data from Supabase traders_list
   const fetchDocaData = async () => {
@@ -198,29 +199,70 @@ export default function DocaDashboardPage() {
     fetchDocaData();
   }, []);
 
-  // Compute status counts across all records
-  const totalCount = users.length;
-  const pendingCount = users.filter((u) => {
+  // Supabase Realtime subscription: updates table instantly when Flutter app sets status to 'Verified'
+  useEffect(() => {
+    const channel = supabase
+      .channel('doca-realtime-listener')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'traders_list' },
+        (payload) => {
+          const updatedRow = (payload.new || payload.old) as DocaTraderRecord;
+          if (!updatedRow) return;
+
+          setUsers((prev) => {
+            const exists = prev.some(
+              (u) => u.id === updatedRow.id || u.license_number === updatedRow.license_number
+            );
+            if (exists) {
+              return prev.map((u) =>
+                u.id === updatedRow.id || u.license_number === updatedRow.license_number
+                  ? { ...u, ...updatedRow }
+                  : u
+              );
+            }
+            return [updatedRow, ...prev];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Compute status counts across all records (scoped to selected district)
+  const districtScopedUsers = useMemo(() => {
+    return users.filter(
+      (u) =>
+        selectedDistrict === 'All' ||
+        (u.district && u.district.toLowerCase() === selectedDistrict.toLowerCase())
+    );
+  }, [users, selectedDistrict]);
+
+  const totalCount = districtScopedUsers.length;
+  const pendingCount = districtScopedUsers.filter((u) => {
     const s = (u.status || '').toLowerCase();
     return s === 'pending' || s === 'pending_inspection';
   }).length;
 
-  const verifiedCount = users.filter((u) => {
+  const verifiedCount = districtScopedUsers.filter((u) => {
     const s = (u.status || '').toLowerCase();
     return s === 'under_review' || s === 'verified';
   }).length;
 
-  const approvedCount = users.filter((u) => {
+  const approvedCount = districtScopedUsers.filter((u) => {
     const s = (u.status || '').toLowerCase();
     return s === 'approved' || s === 'passed';
   }).length;
 
-  const rejectedCount = users.filter((u) => {
+  const rejectedCount = districtScopedUsers.filter((u) => {
     const s = (u.status || '').toLowerCase();
     return s === 'rejected' || s === 'failed';
   }).length;
 
-  // Conditionally filter the displayed list based on activeTab
+  // Conditionally filter the displayed list based on activeTab, selectedDistrict, and search
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
       // 1. Tab filtering (strict match based on activeTab)
@@ -239,7 +281,12 @@ export default function DocaDashboardPage() {
         matchesTab = true;
       }
 
-      // 2. Search query filtering
+      // 2. District filtering
+      const matchesDistrict =
+        selectedDistrict === 'All' ||
+        (u.district && u.district.toLowerCase() === selectedDistrict.toLowerCase());
+
+      // 3. Search query filtering
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
         q === '' ||
@@ -249,9 +296,9 @@ export default function DocaDashboardPage() {
         (u.district && u.district.toLowerCase().includes(q)) ||
         (u.instrument_type && u.instrument_type.toLowerCase().includes(q));
 
-      return matchesTab && matchesSearch;
+      return matchesTab && matchesDistrict && matchesSearch;
     });
-  }, [users, activeTab, searchQuery]);
+  }, [users, activeTab, selectedDistrict, searchQuery]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-900">
@@ -461,27 +508,54 @@ export default function DocaDashboardPage() {
               </div>
             </div>
 
-            {/* Search Bar */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <Search className="w-4 h-4 text-slate-400" />
-              </div>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by Shop Name, Owner, License, District, or Scale Type..."
-                className="w-full pl-10 pr-10 py-2.5 bg-slate-50 hover:bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#002B49] transition-all"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+            {/* Choose District Dropdown & Search Bar */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Choose District Dropdown */}
+              <div className="sm:w-64 flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-[#002B49] focus-within:bg-white transition-all">
+                <MapPin className="w-4 h-4 text-slate-500 shrink-0" />
+                <label htmlFor="doca-choose-district-select" className="text-xs font-bold text-slate-700 shrink-0 whitespace-nowrap">
+                  Choose District:
+                </label>
+                <select
+                  id="doca-choose-district-select"
+                  value={selectedDistrict}
+                  onChange={(e) => setSelectedDistrict(e.target.value)}
+                  className="w-full bg-transparent text-xs font-bold text-[#002B49] focus:outline-hidden cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+                  <option value="All">All Districts</option>
+                  <option value="Rohtak">Rohtak</option>
+                  <option value="Hisar">Hisar</option>
+                  <option value="Gurugram">Gurugram</option>
+                  <option value="Faridabad">Faridabad</option>
+                  <option value="Ambala">Ambala</option>
+                  <option value="Panipat">Panipat</option>
+                  <option value="Karnal">Karnal</option>
+                  <option value="Sonipat">Sonipat</option>
+                </select>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative flex-1">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                  <Search className="w-4 h-4 text-slate-400" />
+                </div>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by Shop Name, Owner, License, District, or Scale Type..."
+                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50 hover:bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#002B49] transition-all"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -501,17 +575,33 @@ export default function DocaDashboardPage() {
               <tbody className="divide-y divide-slate-100 bg-white">
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
-                      <div className="flex flex-col items-center justify-center space-y-2">
-                        <Filter className="w-8 h-8 text-slate-300 stroke-[1.5]" />
-                        <p className="text-sm font-bold text-slate-600">
-                          No {activeTab.toLowerCase()} records found
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {searchQuery
-                            ? `No records matching "${searchQuery}" in the ${activeTab} tab.`
-                            : `There are currently no users in the "${activeTab}" status category.`}
-                        </p>
+                    <td colSpan={6} className="px-6 py-14 text-center text-slate-500">
+                      <div className="flex flex-col items-center justify-center space-y-3 max-w-md mx-auto">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
+                          <Building2 className="w-6 h-6 text-slate-400" />
+                        </div>
+                        <div>
+                          <p className="text-base font-bold text-slate-700">
+                            No pending applications in this jurisdiction
+                          </p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            {selectedDistrict !== 'All'
+                              ? `Currently zero pending verification requests for ${selectedDistrict} jurisdiction in the ${activeTab} tab.`
+                              : `There are currently no applications matching this criteria in the "${activeTab}" status category.`}
+                          </p>
+                        </div>
+                        {(selectedDistrict !== 'All' || searchQuery) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedDistrict('All');
+                              setSearchQuery('');
+                            }}
+                            className="px-3.5 py-1.5 rounded-xl bg-[#002B49] text-white text-xs font-bold hover:bg-[#003B66] transition-colors cursor-pointer"
+                          >
+                            Reset Jurisdiction Filter
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
