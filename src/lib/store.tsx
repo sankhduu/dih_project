@@ -111,6 +111,23 @@ export function MetrologyStoreProvider({ children }: { children: React.ReactNode
 
   const switchRole = (role: UserRole) => {
     const targetUser = MOCK_USERS.find((u) => u.role === role) || MOCK_USERS[0];
+    if (typeof window !== 'undefined') {
+      const keysToClear = [
+        'eMaap_instruments',
+        'eMaap_applications',
+        'eMaap_certificates',
+        'eMaap_memos',
+        'eMaap_offlineDrafts',
+        'eMaap_auditLogs',
+        'officer_queue_cache',
+        'trader_data_cache',
+        'gatc_data_cache',
+        'doca_data_cache',
+      ];
+      keysToClear.forEach((k) => localStorage.removeItem(k));
+      sessionStorage.clear();
+      localStorage.setItem('eMaap_currentUser', JSON.stringify(targetUser));
+    }
     setCurrentUser(targetUser);
     addAuditLog({
       actorId: targetUser.id,

@@ -73,13 +73,7 @@ export default function TraderDashboardPage() {
         let effectiveRole = currentUser.role;
         let effectiveEmail = currentUser.email || '';
 
-        if (session?.user) {
-          effectiveEmail = session.user.email || effectiveEmail;
-          const metaRole = session.user.user_metadata?.role;
-          if (metaRole) {
-            effectiveRole = normalizeUserRole(metaRole).storeRole;
-          }
-        } else if (storedUser) {
+        if (storedUser) {
           try {
             const parsed = JSON.parse(storedUser);
             if (parsed?.role) {
@@ -90,6 +84,12 @@ export default function TraderDashboardPage() {
             }
           } catch {
             // ignore
+          }
+        } else if (session?.user) {
+          effectiveEmail = session.user.email || effectiveEmail;
+          const metaRole = session.user.user_metadata?.role;
+          if (metaRole) {
+            effectiveRole = normalizeUserRole(metaRole).storeRole;
           }
         }
 
