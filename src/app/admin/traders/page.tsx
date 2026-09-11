@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Scale,
   Search,
@@ -137,6 +138,7 @@ const FALLBACK_TRADERS: Trader[] = [
 ];
 
 export default function AdminTradersPage() {
+  const router = useRouter();
   const [traders, setTraders] = useState<Trader[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -293,13 +295,15 @@ export default function AdminTradersPage() {
           <div className="flex items-center justify-between h-16">
             {/* Left Brand */}
             <div className="flex items-center gap-3">
-              <Link
-                href="/"
-                className="w-10 h-10 rounded-xl bg-[#002B49] text-white flex items-center justify-center shadow-xs hover:bg-[#003B66] transition-colors"
-                title="Return to Home Dashboard"
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="w-10 h-10 rounded-xl bg-[#002B49] text-white flex items-center justify-center shadow-xs hover:bg-[#003B66] transition-colors cursor-pointer"
+                title="Go Back (History -1)"
+                aria-label="Go Back"
               >
                 <ArrowLeft className="w-5 h-5 text-white" />
-              </Link>
+              </button>
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-black text-base tracking-tight text-[#002B49]">

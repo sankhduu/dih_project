@@ -41,13 +41,15 @@ export default function NoticesPage() {
         {/* Navigation Breadcrumb */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 transition-colors"
-              title="Return to Dashboard"
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 transition-colors cursor-pointer"
+              title="Go Back (History -1)"
+              aria-label="Go Back"
             >
               <ArrowLeft className="w-5 h-5" />
-            </Link>
+            </button>
             <div>
               <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2.5">
                 <FileWarning className="w-6 h-6 text-rose-600" />

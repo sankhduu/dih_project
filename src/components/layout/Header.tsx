@@ -18,6 +18,7 @@ import {
   ChevronDown,
   FileSpreadsheet,
   LogOut,
+  ArrowLeft,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -142,8 +143,17 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
       {/* Main Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Brand & Emblem */}
-          <div className="flex items-center gap-3">
+          {/* Brand & Emblem + Global Back Button */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="p-2 rounded-xl text-slate-600 hover:text-slate-950 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer flex items-center justify-center"
+              title="Go Back (History -1)"
+              aria-label="Go Back"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
             <div className="w-10 h-10 rounded-lg bg-[#002B49] text-white flex items-center justify-center shadow-xs">
               <Scale className="w-6 h-6 text-amber-400" />
             </div>
@@ -164,14 +174,16 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
 
           {/* Quick Actions, Offline Toggle & Persona Switcher */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Online Registration Link */}
-            <Link
-              href="/apply"
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-2xs bg-[#002B49] text-white hover:bg-[#003B66] cursor-pointer"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400" />
-              <span>Apply Online</span>
-            </Link>
+            {/* Online Registration Link - ONLY FOR TRADER DASHBOARD */}
+            {currentUser.role === 'APPLICANT' && (
+              <Link
+                href="/apply"
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-2xs bg-[#002B49] text-white hover:bg-[#003B66] cursor-pointer"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400" />
+                <span>Apply Online</span>
+              </Link>
+            )}
 
             {/* Quick Public Scanner Button */}
             <Link
@@ -574,9 +586,13 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
           {mounted && currentUser.role === 'ADMIN' && (
             <>
               <TabButton
-                active={activeTab === 'admin-analytics'}
-                onClick={() => setActiveTab('admin-analytics')}
-                label="National Metrology Dashboard"
+                active={activeTab === 'doca-command' || activeTab === 'admin-analytics'}
+                onClick={() => {
+                  setActiveTab('doca-command');
+                  router.push('/doca');
+                }}
+                href="/doca"
+                label="DoCA Central Command"
               />
               <TabButton
                 active={activeTab === 'admin-jurisdictions'}

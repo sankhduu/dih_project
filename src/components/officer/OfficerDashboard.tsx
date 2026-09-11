@@ -469,6 +469,7 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
   const [userDistrict, setUserDistrict] = useState<string>('Hisar');
   const [officerName, setOfficerName] = useState<string>('Inspector Sharma');
   const [officerEmail, setOfficerEmail] = useState<string>('');
+  const [officerId, setOfficerId] = useState<string>('');
 
   // 3. Data & UI States
   const [traders, setTraders] = useState<TraderRecord[]>([]);
@@ -497,27 +498,46 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
   // Supports Supabase direct query (.eq('district', userDistrict))
   // AND Express API (/api/traders?district=Hisar)
   // -------------------------------------------------------------
-  const fetchDistrictData = async (district: string) => {
+  // Step 1 & 2: Confirm Session, Determine District & Fetch Data
+  // Strictly filter Supabase query so it ONLY fetches rows matching
+  // the logged-in LMO's specific ID or assigned District. Never show all users!
+  // -------------------------------------------------------------
+  const fetchDistrictData = async (district: string, offId?: string, offEmail?: string) => {
     setLoading(true);
     let loaded: TraderRecord[] = [];
+    const activeOfficerId = offId || officerId;
+    const activeOfficerEmail = offEmail || officerEmail;
 
-    // 1. Direct Supabase Query (.eq('district', userDistrict))
+    // 1. Direct Supabase Query (Filtered strictly by logged-in LMO ID or assigned District)
     if (supabase) {
       try {
-        const { data: listData, error: listError } = await supabase
-          .from('traders_list')
-          .select('*')
-          .eq('district', district)
-          .order('created_at', { ascending: false });
+        let listQuery = supabase.from('traders_list').select('*');
+
+        if (activeOfficerEmail || activeOfficerId) {
+          const conditions = [`district.eq.${district}`];
+          if (activeOfficerEmail) conditions.push(`lmo_id.eq.${activeOfficerEmail}`);
+          if (activeOfficerId) conditions.push(`lmo_id.eq.${activeOfficerId}`);
+          listQuery = listQuery.or(conditions.join(','));
+        } else {
+          listQuery = listQuery.eq('district', district);
+        }
+
+        const { data: listData, error: listError } = await listQuery.order('created_at', { ascending: false });
 
         if (!listError && listData && listData.length > 0) {
           loaded = listData as TraderRecord[];
         } else {
-          // Check 'traders' table with district filter
-          const { data: trData, error: trError } = await supabase
-            .from('traders')
-            .select('*')
-            .eq('district', district);
+          // Check 'traders' table with strict district or officer ID filter
+          let trQuery = supabase.from('traders').select('*');
+          if (activeOfficerEmail || activeOfficerId) {
+            const conditions = [`district.eq.${district}`];
+            if (activeOfficerEmail) conditions.push(`assigned_officer.eq.${activeOfficerEmail}`);
+            if (activeOfficerId) conditions.push(`assigned_officer.eq.${activeOfficerId}`);
+            trQuery = trQuery.or(conditions.join(','));
+          } else {
+            trQuery = trQuery.eq('district', district);
+          }
+          const { data: trData, error: trError } = await trQuery;
 
           if (!trError && trData && trData.length > 0) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -577,18 +597,26 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
       }
     }
 
-    // 3. Fallback: Seed data strictly filtered by this district
-    const matchedSeed = SEED_LMO_TRADERS.filter(
-      (t) => (t.district || '').toLowerCase() === district.toLowerCase()
-    );
+    // 3. Fallback: Seed data strictly filtered by this officer's district or ID
+    const matchedSeed = SEED_LMO_TRADERS.filter((t) => {
+      const distMatch = (t.district || '').toLowerCase() === district.toLowerCase();
+      const idMatch =
+        (activeOfficerEmail && t.lmo_id === activeOfficerEmail) ||
+        (activeOfficerId && t.lmo_id === activeOfficerId);
+      return distMatch || idMatch;
+    });
     const districtFallback = matchedSeed.length > 0 ? matchedSeed : generateDistrictSeed(district);
 
-    // STRICT GUARANTEE: Never show all users! Always filter strictly by district
-    const districtFiltered = loaded.filter(
-      (t) => (t.district || '').toLowerCase() === district.toLowerCase()
-    );
+    // STRICT GUARANTEE: Never show all users! Always filter strictly by logged-in LMO ID or District
+    const officerFiltered = loaded.filter((t) => {
+      const distMatch = (t.district || '').toLowerCase() === district.toLowerCase();
+      const idMatch =
+        (activeOfficerEmail && t.lmo_id === activeOfficerEmail) ||
+        (activeOfficerId && t.lmo_id === activeOfficerId);
+      return distMatch || idMatch;
+    });
 
-    setTraders(districtFiltered.length > 0 ? districtFiltered : districtFallback);
+    setTraders(officerFiltered.length > 0 ? officerFiltered : districtFallback);
     setLoading(false);
   };
 
@@ -600,12 +628,14 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
         let confirmedDistrict = '';
         let confirmedName = '';
         let confirmedEmail = '';
+        let confirmedId = '';
 
         if (supabase) {
           const { data: sessionData } = await supabase.auth.getSession();
           const authUser = sessionData?.session?.user;
 
           if (authUser) {
+            confirmedId = authUser.id;
             confirmedEmail = authUser.email || '';
             confirmedDistrict = authUser.user_metadata?.district || '';
             confirmedName = authUser.user_metadata?.full_name || '';
@@ -613,12 +643,13 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
             if (!confirmedDistrict && authUser.id) {
               const { data: profile } = await supabase
                 .from('profiles')
-                .select('district, full_name, role')
+                .select('district, full_name, role, id')
                 .eq('id', authUser.id)
                 .maybeSingle();
 
               if (profile?.district) confirmedDistrict = profile.district;
               if (profile?.full_name && !confirmedName) confirmedName = profile.full_name;
+              if (profile?.id) confirmedId = profile.id;
             }
           }
         }
@@ -632,17 +663,21 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
         if (!confirmedEmail && currentUser?.email) {
           confirmedEmail = currentUser.email;
         }
+        if (!confirmedId && currentUser?.id) {
+          confirmedId = currentUser.id;
+        }
 
         const finalDistrict = confirmedDistrict || 'Hisar';
 
         if (isMounted) {
           setUserDistrict(finalDistrict);
+          if (confirmedId) setOfficerId(confirmedId);
           if (confirmedName) setOfficerName(confirmedName);
           if (confirmedEmail) setOfficerEmail(confirmedEmail);
         }
 
-        // Execute data fetch strictly for this confirmed district
-        await fetchDistrictData(finalDistrict);
+        // Execute data fetch strictly for this confirmed officer ID and assigned district
+        await fetchDistrictData(finalDistrict, confirmedId, confirmedEmail);
       } catch (err) {
         console.warn('Error determining officer district:', err);
         if (isMounted) {
@@ -919,31 +954,16 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
           </div>
         </div>
 
-        {/* Quick District Switcher for Jurisdiction Routing */}
-        <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-200 self-start md:self-auto">
-          <span className="text-xs font-bold text-slate-500 pl-2">District:</span>
-          <select
-            value={userDistrict}
-            onChange={(e) => {
-              const newD = e.target.value;
-              setUserDistrict(newD);
-              fetchDistrictData(newD);
-              showToast(`Switched view to ${newD} district jurisdiction`);
-            }}
-            className="text-xs font-bold bg-white text-slate-900 px-3 py-1.5 rounded-xl border border-slate-300 shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#002B49] cursor-pointer"
-          >
-            <option value="Hisar">Hisar (Haryana)</option>
-            <option value="Rohtak">Rohtak (Haryana)</option>
-            <option value="South Delhi">South Delhi (NCR)</option>
-            <option value="Gurugram">Gurugram (NCR)</option>
-          </select>
+        {/* Refresh Action for Assigned Jurisdiction */}
+        <div className="flex items-center gap-2 self-start md:self-auto">
           <button
             type="button"
             onClick={() => fetchDistrictData(userDistrict)}
             title="Refresh District Records"
-            className="p-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl border border-slate-200 transition-colors cursor-pointer"
+            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-2xl border border-slate-200 shadow-2xs transition-colors flex items-center gap-2 cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-blue-600' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#002B49]' : ''}`} />
+            <span>Refresh Queue</span>
           </button>
         </div>
       </div>

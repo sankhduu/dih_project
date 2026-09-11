@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase-client';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
@@ -37,6 +37,7 @@ const FALLBACK_SHOP: TraderRecord = {
 };
 
 export default function StandaloneCertificatePage() {
+  const router = useRouter();
   const params = useParams();
   const rawId = params?.id ? decodeURIComponent(params.id as string) : 'ROH-TR-001';
 
@@ -163,13 +164,16 @@ export default function StandaloneCertificatePage() {
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-8 print:p-0 print:max-w-none">
         {/* Navigation Action Bar */}
         <div className="flex items-center justify-between mb-6 print:hidden">
-          <Link
-            href="/trader/dashboard"
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 transition-colors shadow-2xs"
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+            title="Go Back (History -1)"
+            aria-label="Go Back"
           >
             <ArrowLeft className="w-4 h-4 text-slate-500" />
-            <span>Return to Trader Dashboard</span>
-          </Link>
+            <span>Back</span>
+          </button>
 
           <button
             onClick={handlePrint}

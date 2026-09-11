@@ -1,6 +1,7 @@
 'use client';
 
 import React, { use } from 'react';
+import { useRouter } from 'next/navigation';
 import { useMetrologyStore } from '@/lib/store';
 import { OfficialCertificateView } from '@/components/certificates/OfficialCertificateView';
 import { Header } from '@/components/layout/Header';
@@ -9,6 +10,7 @@ import { ShieldCheck, AlertOctagon, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
 export default function VerifyPage({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter();
   const resolvedParams = use(params);
   const { certificates } = useMetrologyStore();
 
@@ -24,13 +26,16 @@ export default function VerifyPage({ params }: { params: Promise<{ id: string }>
     <div className="flex flex-col min-h-screen bg-slate-100/80">
       <header className="bg-[#002B49] text-white py-4 px-6 shadow-md flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors flex items-center gap-1 text-xs"
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors flex items-center gap-1 text-xs cursor-pointer"
+            title="Go Back (History -1)"
+            aria-label="Go Back"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Back to Portal</span>
-          </Link>
+            <span>Back</span>
+          </button>
           <span className="font-extrabold text-sm tracking-tight text-white">
             e-Māpan <span className="text-amber-400">Public QR Verification</span>
           </span>

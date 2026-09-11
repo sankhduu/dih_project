@@ -247,13 +247,16 @@ export default function ApplyPage() {
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Navigation Breadcrumb */}
         <div className="flex items-center justify-between text-xs text-slate-500">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 text-slate-600 hover:text-[#002B49] font-bold transition-colors"
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="inline-flex items-center gap-1.5 text-slate-600 hover:text-[#002B49] font-bold transition-colors cursor-pointer"
+            title="Go Back (History -1)"
+            aria-label="Go Back"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back to Central Portal</span>
-          </Link>
+            <span>Back</span>
+          </button>
           <span className="font-mono text-[11px] bg-slate-200 px-2 py-0.5 rounded text-slate-700">
             Form I (Rule 14) • Weighing Instrument Registration
           </span>

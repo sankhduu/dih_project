@@ -161,6 +161,7 @@ export default function GatcDashboardPage() {
   // Filter State: Default to 'Under_Review' (Pending Certification Queue)
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('Under_Review');
+  const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
 
   // Review Drawer / Modal State
   const [selectedReviewShop, setSelectedReviewShop] = useState<TraderRecord | null>(null);
@@ -276,7 +277,7 @@ export default function GatcDashboardPage() {
     };
   }, []);
 
-  // Filtered Shops Calculation
+  // Filtered Shops Calculation (Filtered strictly by selectedDistrict, selectedStatus, and searchQuery)
   const filteredShops = useMemo(() => {
     return shops.filter((s) => {
       const q = searchQuery.toLowerCase().trim();
@@ -299,18 +300,31 @@ export default function GatcDashboardPage() {
         matchesStatus = statusNorm === 'rejected';
       }
 
-      return matchesSearch && matchesStatus;
-    });
-  }, [shops, searchQuery, selectedStatus]);
+      // District Filter: when GATC officer selects a district, ONLY show users from that specific district
+      const matchesDistrict =
+        selectedDistrict === 'All' ||
+        (s.district && s.district.toLowerCase() === selectedDistrict.toLowerCase());
 
-  // Statistics calculation
-  const totalCount = shops.length;
-  const underReviewCount = shops.filter((s) => (s.status || '').toLowerCase() === 'under_review').length;
-  const approvedCount = shops.filter((s) => (s.status || '').toLowerCase() === 'approved').length;
-  const pendingInspectionCount = shops.filter(
+      return matchesSearch && matchesStatus && matchesDistrict;
+    });
+  }, [shops, searchQuery, selectedStatus, selectedDistrict]);
+
+  // Statistics calculation scoped to selected district
+  const districtScopedShops = useMemo(() => {
+    return shops.filter(
+      (s) =>
+        selectedDistrict === 'All' ||
+        (s.district && s.district.toLowerCase() === selectedDistrict.toLowerCase())
+    );
+  }, [shops, selectedDistrict]);
+
+  const totalCount = districtScopedShops.length;
+  const underReviewCount = districtScopedShops.filter((s) => (s.status || '').toLowerCase() === 'under_review').length;
+  const approvedCount = districtScopedShops.filter((s) => (s.status || '').toLowerCase() === 'approved').length;
+  const pendingInspectionCount = districtScopedShops.filter(
     (s) => (s.status || '').toLowerCase() === 'pending_inspection' || (s.status || '').toLowerCase() === 'pending'
   ).length;
-  const rejectedCount = shops.filter((s) => (s.status || '').toLowerCase() === 'rejected').length;
+  const rejectedCount = districtScopedShops.filter((s) => (s.status || '').toLowerCase() === 'rejected').length;
 
   // ACTION: Digitally Sign & Approve
   const handleDigitallySignAndApprove = async (shop: TraderRecord) => {
@@ -691,26 +705,53 @@ export default function GatcDashboardPage() {
                   </div>
                 </div>
 
-                {/* Search Bar */}
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                    <Search className="w-4 h-4 text-slate-400" />
-                  </div>
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by Shop Name (e.g. Haryana Gold), License, or District..."
-                    className="w-full pl-10 pr-10 py-2.5 bg-slate-50 hover:bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#002B49] transition-all"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                {/* Choose District Dropdown & Search Bar */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  {/* Choose District Dropdown */}
+                  <div className="sm:w-64 flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-[#002B49] focus-within:bg-white transition-all">
+                    <MapPin className="w-4 h-4 text-slate-500 shrink-0" />
+                    <label htmlFor="choose-district-select" className="text-xs font-bold text-slate-700 shrink-0 whitespace-nowrap">
+                      Choose District:
+                    </label>
+                    <select
+                      id="choose-district-select"
+                      value={selectedDistrict}
+                      onChange={(e) => setSelectedDistrict(e.target.value)}
+                      className="w-full bg-transparent text-xs font-bold text-[#002B49] focus:outline-hidden cursor-pointer"
                     >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
+                      <option value="All">All Districts</option>
+                      <option value="Rohtak">Rohtak</option>
+                      <option value="Hisar">Hisar</option>
+                      <option value="Gurugram">Gurugram</option>
+                      <option value="Faridabad">Faridabad</option>
+                      <option value="Ambala">Ambala</option>
+                      <option value="Panipat">Panipat</option>
+                      <option value="Karnal">Karnal</option>
+                      <option value="Sonipat">Sonipat</option>
+                    </select>
+                  </div>
+
+                  {/* Search Bar */}
+                  <div className="relative flex-1">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                      <Search className="w-4 h-4 text-slate-400" />
+                    </div>
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search by Shop Name (e.g. Haryana Gold), License, or District..."
+                      className="w-full pl-10 pr-10 py-2.5 bg-slate-50 hover:bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#002B49] transition-all"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery('')}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
