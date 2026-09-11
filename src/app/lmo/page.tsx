@@ -1,15 +1,23 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { OfficerDashboard, LmoTabType } from '@/components/officer/OfficerDashboard';
+import { useMetrologyStore } from '@/lib/store';
 
 function LMODashboardContent() {
   const searchParams = useSearchParams();
   const tabFromQuery = searchParams.get('tab') as LmoTabType | null;
   const [headerTab, setHeaderTab] = useState<string>(tabFromQuery || 'inspection_queue');
+  const { currentUser, switchRole } = useMetrologyStore();
+
+  useEffect(() => {
+    if (currentUser.role !== 'LMO') {
+      switchRole('LMO');
+    }
+  }, [currentUser.role, switchRole]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-sans antialiased">

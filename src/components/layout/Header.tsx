@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase-client';
 import { useMetrologyStore } from '@/lib/store';
 import { MOCK_USERS } from '@/lib/mock-data';
@@ -132,96 +132,41 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
     PUBLIC: { label: 'Public Citizen / Verification', icon: QrCode },
   };
 
-  const currentRoleInfo = roleLabels[currentUser.role] || roleLabels.APPLICANT;
+  const pathname = usePathname() || '';
 
-  const PERSONA_OPTIONS: {
-    role: UserRole;
-    name: string;
-    route: string;
-    tab: string;
-    details: string;
-    getUser: () => UserProfile;
-  }[] = [
-    {
-      role: 'APPLICANT',
-      name: 'Trader',
-      route: '/trader',
-      tab: 'applicant-dashboard',
-      details: 'Ramesh Kumar • Sharma Kirana Store (Rohtak)',
-      getUser: () => availableUsers.find((u) => u.role === 'APPLICANT') || MOCK_USERS[0],
-    },
-    {
-      role: 'LMO',
-      name: 'LMO',
-      route: '/lmo',
-      tab: 'inspection_queue',
-      details: 'Shri Rajesh Varma • Rohtak District LMO',
-      getUser: () => availableUsers.find((u) => u.role === 'LMO') || MOCK_USERS[1],
-    },
-    {
-      role: 'GATC',
-      name: 'GATC',
-      route: '/gatc',
-      tab: 'gatc-queue',
-      details: 'National Metrology Lab • Central Test Lab',
-      getUser: () => availableUsers.find((u) => u.role === 'GATC') || MOCK_USERS[2],
-    },
-    {
-      role: 'ADMIN',
-      name: 'DOCA',
-      route: '/doca',
-      tab: 'doca-command',
-      details: 'Director General • Central Regulatory Command',
-      getUser: () => availableUsers.find((u) => u.role === 'ADMIN') || MOCK_USERS[3],
-    },
-  ];
+  // Determine effective role strictly by route if on a role-specific dashboard:
+  const isLmoRoute = pathname.startsWith('/lmo');
+  const isGatcRoute = pathname.startsWith('/gatc');
+  const isDocaRoute = pathname.startsWith('/doca') || pathname.startsWith('/admin');
+  const isTraderRoute = pathname.startsWith('/trader');
 
-  const handleSwitchPersona = async (
-    targetUser: UserProfile,
-    targetRoute: string,
-    targetTab: string
-  ) => {
-    setShowRoleMenu(false);
+  const effectiveRole: UserRole = isLmoRoute
+    ? 'LMO'
+    : isGatcRoute
+    ? 'GATC'
+    : isDocaRoute
+    ? 'ADMIN'
+    : isTraderRoute
+    ? 'APPLICANT'
+    : currentUser.role;
 
-    try {
-      // 1. Clear old Supabase session to prevent auth collision with previous role
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.warn('Note on Supabase signOut during persona switch:', err);
-    }
+  // Resolve user profile corresponding to the effective role
+  const lmoUser = availableUsers.find((u) => u.role === 'LMO') || MOCK_USERS[1];
+  const gatcUser = availableUsers.find((u) => u.role === 'GATC') || MOCK_USERS[2];
+  const docaUser = availableUsers.find((u) => u.role === 'ADMIN') || MOCK_USERS[3];
+  const traderUser = availableUsers.find((u) => u.role === 'APPLICANT') || MOCK_USERS[0];
 
-    // 2. Clear locally cached dashboard data from previous role
-    if (typeof window !== 'undefined') {
-      const keysToClear = [
-        'eMaap_instruments',
-        'eMaap_applications',
-        'eMaap_certificates',
-        'eMaap_memos',
-        'eMaap_offlineDrafts',
-        'eMaap_auditLogs',
-        'officer_queue_cache',
-        'trader_data_cache',
-        'gatc_data_cache',
-        'doca_data_cache',
-      ];
-      keysToClear.forEach((k) => localStorage.removeItem(k));
-      sessionStorage.clear();
+  const displayedUser: UserProfile = isLmoRoute
+    ? (currentUser.role === 'LMO' ? currentUser : lmoUser)
+    : isGatcRoute
+    ? (currentUser.role === 'GATC' ? currentUser : gatcUser)
+    : isDocaRoute
+    ? (currentUser.role === 'ADMIN' ? currentUser : docaUser)
+    : isTraderRoute
+    ? (currentUser.role === 'APPLICANT' ? currentUser : traderUser)
+    : currentUser;
 
-      // Set new persona in localStorage so dashboards immediately read updated profile
-      localStorage.setItem('eMaap_currentUser', JSON.stringify(targetUser));
-    }
-
-    // 3. State Update: Update React Context store
-    setCurrentUser(targetUser);
-    setActiveTab(targetTab);
-
-    // 4. Force Redirect to the correct route using router.push() from next/navigation
-    // Trader -> /trader
-    // LMO -> /lmo
-    // GATC -> /gatc
-    // DOCA -> /doca
-    router.push(targetRoute);
-  };
+  const currentRoleInfo = roleLabels[effectiveRole] || roleLabels.LMO;
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs">
@@ -431,135 +376,84 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
               )}
             </div>
 
-            {/* Persona Switcher / Profile Badge */}
+            {/* Officer / User Profile Badge */}
             <div className="relative">
               <button
+                type="button"
                 onClick={() => setShowRoleMenu(!showRoleMenu)}
-                className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 transition-all text-left cursor-pointer"
+                className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 transition-all text-left cursor-pointer"
               >
-                <div className="w-7 h-7 rounded-full bg-[#002B49] text-white flex items-center justify-center text-xs font-bold">
-                  {(currentUser.fullName || currentUser.email || 'T').charAt(0).toUpperCase()}
+                <div className="w-8 h-8 rounded-full bg-[#002B49] text-white flex items-center justify-center text-xs font-bold shadow-xs">
+                  {(displayedUser.fullName || displayedUser.email || 'O').charAt(0).toUpperCase()}
                 </div>
                 <div className="hidden lg:block text-left">
-                  <div className="text-xs font-bold text-slate-900 leading-tight truncate max-w-[140px]">
-                    {currentUser.fullName || currentUser.email?.split('@')[0] || 'Trader'}
+                  <div className="text-xs font-bold text-slate-900 leading-tight truncate max-w-[150px]">
+                    {displayedUser.fullName || 'Officer'}
                   </div>
-                  <div className="text-[10px] text-slate-500 font-medium truncate max-w-[140px]">
-                    {currentUser.email || (currentUser.role === 'APPLICANT' ? 'Trader / Enterprise' : currentRoleInfo.label.split('(')[0])}
+                  <div className="text-[10px] text-slate-500 font-medium truncate max-w-[150px]">
+                    {displayedUser.district ? `${displayedUser.district} • ` : ''}
+                    {currentRoleInfo.label.split('(')[0].trim()}
                   </div>
                 </div>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
               </button>
 
-              {/* Persona Selector Menu */}
+              {/* Profile Card Menu (Strictly shows current authenticated officer/user - NO persona switching) */}
               {showRoleMenu && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 p-3 z-50 divide-y divide-slate-100">
-                  {/* Current Active User Profile Summary */}
-                  <div className="pb-3 space-y-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-full bg-[#002B49] text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs">
-                        {(currentUser.fullName || currentUser.email || 'U').charAt(0).toUpperCase()}
-                      </div>
-                      <div className="overflow-hidden flex-1 min-w-0">
-                        <p className="text-xs font-black text-slate-900 truncate">
-                          {currentUser.fullName || 'Active User'}
-                        </p>
-                        <p className="text-[10px] text-slate-500 font-mono truncate">
-                          {currentUser.email || 'user@emaap.gov.in'}
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                        {currentRoleInfo.label.split('(')[0].trim()}
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-50 space-y-3">
+                  {/* Officer / User Profile Header */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[#002B49] text-white flex items-center justify-center text-sm font-black shrink-0 shadow-xs">
+                      {(displayedUser.fullName || 'O').charAt(0).toUpperCase()}
+                    </div>
+                    <div className="overflow-hidden flex-1 min-w-0">
+                      <p className="text-xs font-black text-slate-900 truncate">
+                        {displayedUser.fullName}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-mono truncate">
+                        {displayedUser.email}
+                      </p>
+                      <span className="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                        {currentRoleInfo.label}
                       </span>
                     </div>
+                  </div>
 
-                    {currentUser.businessName && (
-                      <div className="text-[11px] text-slate-600 flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200/60">
-                        <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate font-semibold">{currentUser.businessName}</span>
+                  {/* Official Credentials & Jurisdiction Details */}
+                  <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/70 space-y-1.5 text-xs">
+                    {displayedUser.district && (
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500 font-medium">Assigned Jurisdiction:</span>
+                        <span className="font-bold text-slate-800">{displayedUser.district} District, Haryana</span>
                       </div>
                     )}
-                  </div>
-
-                  {/* Switch Active Persona Selection */}
-                  <div className="py-2.5 space-y-2">
-                    <div className="px-1">
-                      <p className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
-                        Switch Active Persona
-                      </p>
-                      <p className="text-[11px] text-slate-400">
-                        Select a role to switch authentication &amp; dashboard
-                      </p>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      {PERSONA_OPTIONS.map((item) => {
-                        const isCurrent = currentUser.role === item.role;
-                        const RoleIcon = roleLabels[item.role].icon;
-
-                        return (
-                          <button
-                            key={item.role}
-                            type="button"
-                            onClick={() => handleSwitchPersona(item.getUser(), item.route, item.tab)}
-                            className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left text-xs transition-all cursor-pointer ${
-                              isCurrent
-                                ? 'bg-[#002B49] text-white shadow-sm font-bold'
-                                : 'hover:bg-slate-100 text-slate-700 font-medium'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div
-                                className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                                  isCurrent ? 'bg-white/20 text-white' : 'bg-slate-100 text-[#002B49]'
-                                }`}
-                              >
-                                <RoleIcon className="w-4 h-4" />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="font-bold truncate text-xs flex items-center gap-1.5">
-                                  <span>{item.name}</span>
-                                  <span className={`text-[10px] font-normal ${isCurrent ? 'text-slate-300' : 'text-slate-400'}`}>
-                                    ({item.route})
-                                  </span>
-                                </div>
-                                <div
-                                  className={`text-[10px] truncate ${
-                                    isCurrent ? 'text-slate-200' : 'text-slate-500'
-                                  }`}
-                                >
-                                  {item.details}
-                                </div>
-                              </div>
-                            </div>
-
-                            {isCurrent ? (
-                              <span className="text-[10px] bg-white/25 px-2 py-0.5 rounded-full text-white font-bold ml-2 shrink-0">
-                                Active
-                              </span>
-                            ) : (
-                              <span className="text-[11px] text-slate-400 hover:text-slate-600 ml-2 shrink-0 font-bold">
-                                Switch &rarr;
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Actions & Sign Out */}
-                  <div className="pt-2 flex flex-col gap-1 text-xs">
-                    {currentUser.role === 'APPLICANT' && (
-                      <Link
-                        href="/apply"
-                        onClick={() => setShowRoleMenu(false)}
-                        className="px-2.5 py-2 rounded-xl text-[#002B49] font-bold hover:bg-slate-100 flex items-center justify-between transition-colors"
-                      >
-                        <span>📝 Apply for Scale Stamping</span>
-                        <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md">Online</span>
-                      </Link>
+                    {displayedUser.designation && (
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500 font-medium">Official Title:</span>
+                        <span className="font-semibold text-slate-700 text-right truncate max-w-[150px]">
+                          {displayedUser.designation}
+                        </span>
+                      </div>
                     )}
+                    {displayedUser.businessName && (
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500 font-medium">Enterprise:</span>
+                        <span className="font-semibold text-slate-700 truncate max-w-[150px]">
+                          {displayedUser.businessName}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-200/50">
+                      <span className="text-slate-500 font-medium">Session Security:</span>
+                      <span className="font-bold text-emerald-700 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        Verified Officer
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Sign Out Action */}
+                  <div className="pt-1 border-t border-slate-100">
                     <button
                       type="button"
                       onClick={async () => {
@@ -575,13 +469,13 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                         }
                         router.push('/login');
                       }}
-                      className="w-full mt-1 pt-2 border-t border-slate-100 px-2.5 py-1.5 rounded-xl text-rose-700 font-bold hover:bg-rose-50 flex items-center justify-between transition-colors cursor-pointer text-left"
+                      className="w-full px-3 py-2 rounded-xl text-rose-700 font-bold hover:bg-rose-50 flex items-center justify-between transition-colors cursor-pointer text-xs"
                     >
-                      <span className="flex items-center gap-1.5">
-                        <LogOut className="w-3.5 h-3.5" />
-                        <span>Sign Out Session</span>
+                      <span className="flex items-center gap-2">
+                        <LogOut className="w-4 h-4" />
+                        <span>Sign Out Officer Session</span>
                       </span>
-                      <span className="text-[10px] text-rose-400">Exit</span>
+                      <span className="text-[10px] text-rose-400 font-medium">Exit</span>
                     </button>
                   </div>
                 </div>
@@ -592,8 +486,8 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
 
         {/* Role Navigation Tabs */}
         <div className="flex space-x-1 sm:space-x-4 border-t border-slate-100 overflow-x-auto py-2 scrollbar-none">
-          {/* APPLICANT TABS (Only shown when user is Trader/Applicant) */}
-          {(!mounted || currentUser.role === 'APPLICANT') && (
+          {/* APPLICANT TABS (Strictly shown for Trader/Applicant) */}
+          {effectiveRole === 'APPLICANT' && (
             <>
               <TabButton
                 active={activeTab === 'applicant-dashboard'}
@@ -625,8 +519,8 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
             </>
           )}
 
-          {/* LMO OFFICER TABS (Never shown to Trader) */}
-          {mounted && currentUser.role === 'LMO' && (
+          {/* LMO OFFICER TABS (Strictly shown for LMO) */}
+          {effectiveRole === 'LMO' && (
             <>
               <TabButton
                 active={activeTab === 'inspection_queue' || activeTab === 'officer-queue'}
@@ -667,8 +561,8 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
             </>
           )}
 
-          {/* GATC LAB TABS (Never shown to Trader) */}
-          {mounted && currentUser.role === 'GATC' && (
+          {/* GATC LAB TABS (Strictly shown for GATC) */}
+          {effectiveRole === 'GATC' && (
             <>
               <TabButton
                 active={activeTab === 'gatc-queue'}
@@ -691,8 +585,8 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
             </>
           )}
 
-          {/* ADMIN TABS (Never shown to Trader) */}
-          {mounted && currentUser.role === 'ADMIN' && (
+          {/* ADMIN TABS (Strictly shown for DoCA Admin) */}
+          {effectiveRole === 'ADMIN' && (
             <>
               <TabButton
                 active={activeTab === 'doca-command' || activeTab === 'admin-analytics'}

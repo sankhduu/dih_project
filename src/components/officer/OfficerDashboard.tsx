@@ -1031,7 +1031,7 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
             <FileCheck className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="mt-2 text-2xl font-black text-slate-900">{counts.issued}</div>
-          <div className="text-[11px] text-emerald-600 font-medium mt-1">Official GATC seals</div>
+          <div className="text-[11px] text-emerald-600 font-medium mt-1">Legally stamped & certified</div>
         </div>
       </div>
 
@@ -1143,7 +1143,7 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
             <p className="text-xs text-slate-500 mt-0.5">
               {activeTab === 'inspection_queue' && `Showing pending applications within ${userDistrict} legal metrology jurisdiction.`}
               {activeTab === 'visit_schedule' && `Active field appointments scheduled for on-site calibration & seal verification.`}
-              {activeTab === 'verified' && `Traders calibrated within statutory MPE tolerances awaiting GATC certification.`}
+              {activeTab === 'verified' && `Traders calibrated within statutory MPE tolerances awaiting final central certification.`}
               {activeTab === 'certificates_issued' && `Legal Metrology verification certificates issued with statutory QR codes.`}
             </p>
           </div>
