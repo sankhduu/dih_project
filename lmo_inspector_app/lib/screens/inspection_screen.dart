@@ -304,7 +304,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
           'id': traderId,
           'license_number': licenseNumber,
           'shop_name': shopName,
-          'status': 'Verified',
+          'status': 'Pending_GATC',
           'latitude': lat,
           'longitude': lng,
           'photo_path': savedPhotoUrl,
@@ -363,19 +363,19 @@ class _InspectionScreenState extends State<InspectionScreen> {
         }
       }
 
-      // 4. Update traders_list row with image URL, GPS coordinates, and set status to 'Verified'
+      // 4. Update traders_list row: set status to 'Pending_GATC' targeting license_number
       await supabase.from('traders_list').update({
-        'status': 'Verified',
+        'status': 'Pending_GATC',
         'latitude': lat,
         'longitude': lng,
         'updated_at': DateTime.now().toIso8601String(),
         'photo_url': uploadedPhotoUrl,
         'checklist_confirmed': true,
         'lmo_id': lmoId,
-      }).eq(widget.trader?['id'] != null ? 'id' : 'license_number', widget.trader?['id'] ?? licenseNumber);
+      }).eq('license_number', widget.licenseNumber);
 
       syncedOnline = true;
-      debugPrint('✅ Online sync to Supabase traders_list succeeded for trader: $traderId (Verified)');
+      debugPrint('✅ Online sync to Supabase traders_list succeeded for license: ${widget.licenseNumber} (Pending_GATC)');
 
       dismissBlockingDialog();
 
@@ -387,7 +387,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
                 Icon(Icons.send_rounded, color: Colors.white, size: 18),
                 SizedBox(width: 8),
                 Expanded(
-                  child: Text('Inspection verified and uploaded to central registry!'),
+                  child: Text('Inspection verified! Forwarded to GATC laboratory for digital signing.'),
                 ),
               ],
             ),
@@ -471,7 +471,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
             const SizedBox(width: 12),
             const Expanded(
               child: Text(
-                'Inspection Status: Verified',
+                'Forwarded to GATC',
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
@@ -486,7 +486,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Statutory physical inspection (checklist, GPS coordinates, and photo proof) has been recorded and marked Verified.',
+              'Statutory physical inspection has been recorded and forwarded to the Central GATC Laboratory for digital signature.',
               style: TextStyle(fontSize: 13, color: Colors.black87),
             ),
             const SizedBox(height: 12),
@@ -514,7 +514,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Text(
-                          'Verified',
+                          'Pending_GATC',
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: emeraldGreen),
                         ),
                       ),

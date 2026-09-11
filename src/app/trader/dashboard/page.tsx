@@ -411,7 +411,8 @@ export default function TraderDashboardPage() {
   const isVerified = (traderShop?.status || '').trim().toLowerCase() === 'verified' || rawStatus === 'verified';
   const isApproved = rawStatus === 'approved';
   const isRejected = rawStatus === 'rejected';
-  const isUnderReview = rawStatus === 'under_review';
+  const isPendingGatc = rawStatus === 'pending_gatc';
+  const isUnderReview = rawStatus === 'under_review' || isPendingGatc;
   const isPendingInspection = rawStatus === 'pending_inspection' || rawStatus === 'pending';
 
   return (

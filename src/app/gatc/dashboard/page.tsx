@@ -39,28 +39,12 @@ import {
 
 const SEED_SHOPS: TraderRecord[] = [
   {
-    id: 'ROH-TR-001',
-    shop_name: 'Sharma Kirana & General Store',
-    owner_name: 'Ramesh Kumar Sharma',
-    license_number: 'HR-LMO-ROH-2026-042',
-    district: 'Rohtak',
-    status: 'Pending_Inspection',
-    address: 'Booth 12, Main Market, Model Town, Rohtak - 124001',
-    instrument_type: 'Electronic Tabletop Scale (30 kg Class III)',
-    capacity: '30 kg / e=2g',
-    make_model: 'Essae DS-852 Tabletop',
-    latitude: null,
-    longitude: null,
-    checklist_confirmed: false,
-    updated_at: new Date().toISOString(),
-  },
-  {
     id: 'ROH-TR-002',
     shop_name: 'Haryana Gold & Diamond Jewelers',
     owner_name: 'Vikram Soni',
     license_number: 'HR-LMO-ROH-2026-057',
     district: 'Rohtak',
-    status: 'Under_Review',
+    status: 'Pending_GATC',
     address: 'Sarafa Bazar, Near Quilla Mohalla, Rohtak - 124001',
     instrument_type: 'High Precision Gold Balance (Class II)',
     capacity: '600 g / e=0.01g',
@@ -112,28 +96,12 @@ const SEED_SHOPS: TraderRecord[] = [
     updated_at: new Date(Date.now() - 10800000).toISOString(),
   },
   {
-    id: 'HIS-TR-101',
-    shop_name: 'Hisar Agro Mill & Grain Store',
-    owner_name: 'Suresh Chand Bishnoi',
-    license_number: 'HR-LMO-HIS-2026-081',
-    district: 'Hisar',
-    status: 'Pending_Inspection',
-    address: 'Shop 14, Anaj Mandi, Hisar, Haryana - 125001',
-    instrument_type: 'Platform Weighing Scale (500 kg)',
-    capacity: '500 kg / e=50g',
-    make_model: 'Avery Weight-Tronix AV-500',
-    latitude: null,
-    longitude: null,
-    checklist_confirmed: false,
-    updated_at: new Date().toISOString(),
-  },
-  {
     id: 'HIS-TR-102',
     shop_name: 'Rajdhani Sweets & Dairy',
     owner_name: 'Sunil Kumar',
     license_number: 'HR-LMO-HIS-2026-119',
     district: 'Hisar',
-    status: 'Under_Review',
+    status: 'Pending_GATC',
     address: 'Plot 4, Urban Estate II, Hisar - 125005',
     instrument_type: 'Electronic Retail Counter Scale (30 kg)',
     capacity: '30 kg / e=2g',
@@ -158,9 +126,9 @@ export default function GatcDashboardPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [flashingRowId, setFlashingRowId] = useState<string | null>(null);
 
-  // Filter State: Default to 'Under_Review' (Pending Certification Queue)
+  // Filter State: Default to 'Pending_GATC' (Pending Certification Queue)
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedStatus, setSelectedStatus] = useState<string>('Under_Review');
+  const [selectedStatus, setSelectedStatus] = useState<string>('Pending_GATC');
   const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
 
   // Review Drawer / Modal State
@@ -185,24 +153,27 @@ export default function GatcDashboardPage() {
     message: '',
   });
 
-  // 1. Initial Data Fetch from Supabase traders_list
+  // 1. Initial Data Fetch from Supabase traders_list (specifically Pending_GATC rows updated by LMO)
   const fetchShops = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('traders_list')
         .select('*')
-        .order('created_at', { ascending: true });
+        .eq('status', 'Pending_GATC')
+        .order('created_at', { ascending: false });
 
       if (data && !error && data.length > 0) {
-        const fetchedIds = new Set(data.map((d) => d.id || d.license_number));
-        const merged = [...data];
-        for (const seed of SEED_SHOPS) {
-          if (!fetchedIds.has(seed.id) && !fetchedIds.has(seed.license_number)) {
-            merged.push(seed);
-          }
-        }
-        setShops(merged as TraderRecord[]);
+        setShops((prev) => {
+          const fetchedLicSet = new Set(data.map((d) => d.license_number || d.id));
+          const approvedOrRejected = prev.filter(
+            (p) => p.status === 'Approved' || p.status === 'Rejected'
+          );
+          const nonOverlapping = approvedOrRejected.filter(
+            (p) => !fetchedLicSet.has(p.license_number || p.id)
+          );
+          return [...data, ...nonOverlapping] as TraderRecord[];
+        });
       } else {
         setShops(SEED_SHOPS);
       }
@@ -228,6 +199,17 @@ export default function GatcDashboardPage() {
         (payload) => {
           const updatedRow = (payload.new || payload.old) as TraderRecord;
           if (!updatedRow) return;
+
+          // Exclude Pending_Inspection from GATC portal
+          const statusNorm = (updatedRow.status || '').toLowerCase();
+          if (statusNorm === 'pending_inspection' || statusNorm === 'pending') {
+            setShops((prev) =>
+              prev.filter(
+                (s) => s.license_number !== updatedRow.license_number && s.id !== updatedRow.id
+              )
+            );
+            return;
+          }
 
           setShops((prev) => {
             const exists = prev.some(
@@ -258,16 +240,16 @@ export default function GatcDashboardPage() {
             return curr;
           });
 
-          // Toast banner
-          setSyncToast({
-            visible: true,
-            title: updatedRow.status === 'Under_Review'
-              ? 'New Inspection Received from Field Officer!'
-              : `Status Updated: ${updatedRow.status}`,
-            message: `${updatedRow.shop_name} (${updatedRow.district}) is now ${updatedRow.status}.`,
-            type: 'success',
-          });
-          setTimeout(() => setSyncToast((prev) => ({ ...prev, visible: false })), 6000);
+          // Toast banner on live arrival of Pending_GATC
+          if (updatedRow.status === 'Pending_GATC') {
+            setSyncToast({
+              visible: true,
+              title: '⚡ Live LMO Inspection Received!',
+              message: `${updatedRow.shop_name} (${updatedRow.license_number}) has been submitted to Pending_GATC and is ready for signing.`,
+              type: 'success',
+            });
+            setTimeout(() => setSyncToast((prev) => ({ ...prev, visible: false })), 7000);
+          }
         }
       )
       .subscribe();
@@ -290,14 +272,14 @@ export default function GatcDashboardPage() {
 
       const statusNorm = (s.status || '').toLowerCase();
       let matchesStatus = true;
-      if (selectedStatus === 'Under_Review') {
-        matchesStatus = statusNorm === 'under_review' || statusNorm === 'verified';
+      if (selectedStatus === 'Pending_GATC' || selectedStatus === 'Under_Review') {
+        matchesStatus = statusNorm === 'pending_gatc' || statusNorm === 'under_review' || statusNorm === 'verified';
       } else if (selectedStatus === 'Approved') {
         matchesStatus = statusNorm === 'approved';
-      } else if (selectedStatus === 'Pending_Inspection') {
-        matchesStatus = statusNorm === 'pending_inspection' || statusNorm === 'pending';
       } else if (selectedStatus === 'Rejected') {
         matchesStatus = statusNorm === 'rejected';
+      } else if (selectedStatus === 'All') {
+        matchesStatus = statusNorm !== 'pending_inspection' && statusNorm !== 'pending';
       }
 
       // District Filter: when GATC officer selects a district, ONLY show users from that specific district
@@ -318,15 +300,14 @@ export default function GatcDashboardPage() {
     );
   }, [shops, selectedDistrict]);
 
-  const totalCount = districtScopedShops.length;
-  const underReviewCount = districtScopedShops.filter((s) => {
+  const totalCount = districtScopedShops.filter(
+    (s) => (s.status || '').toLowerCase() !== 'pending_inspection' && (s.status || '').toLowerCase() !== 'pending'
+  ).length;
+  const pendingGatcCount = districtScopedShops.filter((s) => {
     const sn = (s.status || '').toLowerCase();
-    return sn === 'under_review' || sn === 'verified';
+    return sn === 'pending_gatc' || sn === 'under_review' || sn === 'verified';
   }).length;
   const approvedCount = districtScopedShops.filter((s) => (s.status || '').toLowerCase() === 'approved').length;
-  const pendingInspectionCount = districtScopedShops.filter(
-    (s) => (s.status || '').toLowerCase() === 'pending_inspection' || (s.status || '').toLowerCase() === 'pending'
-  ).length;
   const rejectedCount = districtScopedShops.filter((s) => (s.status || '').toLowerCase() === 'rejected').length;
 
   // ACTION: Digitally Sign & Approve
@@ -339,7 +320,7 @@ export default function GatcDashboardPage() {
       const signatureHash = `GATC-SIG-${licCode}-8F92A9C4-${randomHex}`;
       const signedTimestamp = new Date().toISOString();
 
-      // Write to Supabase traders_list
+      // Write to Supabase traders_list targeting license_number
       const shopId = shop.id || shop.license_number;
       try {
         await supabase
@@ -350,7 +331,7 @@ export default function GatcDashboardPage() {
             signed_at: signedTimestamp,
             updated_at: signedTimestamp,
           })
-          .eq('id', shopId);
+          .eq('license_number', shop.license_number);
       } catch (dbErr) {
         console.warn('Note on Supabase signature update:', dbErr);
       }
@@ -409,7 +390,7 @@ export default function GatcDashboardPage() {
           rejection_reason: rejectionRemark.trim(),
           updated_at: nowIso,
         })
-        .eq('id', shopId);
+        .eq('license_number', shop.license_number);
     } catch (dbErr) {
       console.warn('Note on Supabase rejection update:', dbErr);
     }
@@ -533,7 +514,7 @@ export default function GatcDashboardPage() {
             }`}
           >
             <FileSpreadsheet className="w-4 h-4 text-amber-400" />
-            <span>Pending Certification Queue ({underReviewCount})</span>
+            <span>Pending Certification Queue ({pendingGatcCount})</span>
           </button>
 
           <button
@@ -557,9 +538,9 @@ export default function GatcDashboardPage() {
             {/* Metric Cards Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div
-                onClick={() => setSelectedStatus('Under_Review')}
+                onClick={() => setSelectedStatus('Pending_GATC')}
                 className={`p-5 rounded-2xl border shadow-xs cursor-pointer transition-all ${
-                  selectedStatus === 'Under_Review'
+                  selectedStatus === 'Pending_GATC' || selectedStatus === 'Under_Review'
                     ? 'bg-blue-50/80 border-blue-400 ring-2 ring-blue-500/20'
                     : 'bg-white border-slate-200 hover:border-blue-300'
                 }`}
@@ -568,9 +549,9 @@ export default function GatcDashboardPage() {
                   <span>Pending GATC Signing</span>
                   <Clock className="w-4 h-4 text-blue-600 animate-spin" />
                 </div>
-                <div className="mt-2 text-2xl font-black text-blue-700">{underReviewCount}</div>
+                <div className="mt-2 text-2xl font-black text-blue-700">{pendingGatcCount}</div>
                 <div className="text-[11px] text-blue-600 font-semibold mt-0.5">
-                  LMO Submitted (Under_Review)
+                  LMO Submitted (Pending_GATC)
                 </div>
               </div>
 
@@ -593,20 +574,20 @@ export default function GatcDashboardPage() {
               </div>
 
               <div
-                onClick={() => setSelectedStatus('Pending_Inspection')}
+                onClick={() => setSelectedStatus('All')}
                 className={`p-5 rounded-2xl border shadow-xs cursor-pointer transition-all ${
-                  selectedStatus === 'Pending_Inspection'
-                    ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-500/20'
-                    : 'bg-white border-slate-200 hover:border-amber-300'
+                  selectedStatus === 'All'
+                    ? 'bg-indigo-50/80 border-indigo-400 ring-2 ring-indigo-500/20'
+                    : 'bg-white border-slate-200 hover:border-indigo-300'
                 }`}
               >
                 <div className="text-slate-500 text-xs font-semibold flex items-center justify-between">
-                  <span>Awaiting Field Visit</span>
-                  <Scale className="w-4 h-4 text-amber-600" />
+                  <span>Total GATC Records</span>
+                  <Scale className="w-4 h-4 text-indigo-600" />
                 </div>
-                <div className="mt-2 text-2xl font-black text-amber-700">{pendingInspectionCount}</div>
-                <div className="text-[11px] text-amber-600 font-semibold mt-0.5">
-                  LMO Mobile Queue
+                <div className="mt-2 text-2xl font-black text-indigo-700">{totalCount}</div>
+                <div className="text-[11px] text-indigo-600 font-semibold mt-0.5">
+                  Live Handshake Active
                 </div>
               </div>
 
@@ -639,8 +620,8 @@ export default function GatcDashboardPage() {
                     </div>
                     <div>
                       <h2 className="font-extrabold text-base text-slate-900">
-                        {selectedStatus === 'Under_Review'
-                          ? 'Pending Certification Queue (Under Review)'
+                        {selectedStatus === 'Pending_GATC' || selectedStatus === 'Under_Review'
+                          ? 'Pending Certification Queue (Pending_GATC)'
                           : selectedStatus === 'Approved'
                           ? 'Approved & Digitally Signed Directory'
                           : selectedStatus === 'Rejected'
@@ -656,14 +637,14 @@ export default function GatcDashboardPage() {
                   {/* Filter Pills */}
                   <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
                     <button
-                      onClick={() => setSelectedStatus('Under_Review')}
+                      onClick={() => setSelectedStatus('Pending_GATC')}
                       className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        selectedStatus === 'Under_Review'
+                        selectedStatus === 'Pending_GATC' || selectedStatus === 'Under_Review'
                           ? 'bg-blue-600 text-white shadow-xs'
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      Pending Signing ({underReviewCount})
+                      Pending GATC ({pendingGatcCount})
                     </button>
                     <button
                       onClick={() => setSelectedStatus('Approved')}
@@ -674,16 +655,6 @@ export default function GatcDashboardPage() {
                       }`}
                     >
                       Approved ({approvedCount})
-                    </button>
-                    <button
-                      onClick={() => setSelectedStatus('Pending_Inspection')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        selectedStatus === 'Pending_Inspection'
-                          ? 'bg-amber-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Pending Visit ({pendingInspectionCount})
                     </button>
                     <button
                       onClick={() => setSelectedStatus('Rejected')}
@@ -839,7 +810,12 @@ export default function GatcDashboardPage() {
 
                             {/* Status Badge */}
                             <td className="px-6 py-4">
-                              {isUnder ? (
+                              {statusNorm === 'pending_gatc' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-300 shadow-2xs">
+                                  <Clock className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+                                  <span>Pending GATC</span>
+                                </span>
+                              ) : isUnder ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-300 shadow-2xs">
                                   <Clock className="w-3.5 h-3.5 text-blue-600 animate-spin" />
                                   <span>Under Review</span>
