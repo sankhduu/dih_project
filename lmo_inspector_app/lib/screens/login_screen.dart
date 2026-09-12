@@ -121,7 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
         context,
         MaterialPageRoute(
           builder: (context) => DashboardScreen(
-            district: targetDistrict,
+            district: 'All',
             officerEmail: email,
           ),
         ),

@@ -6,44 +6,47 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get('limit') || '100', 10);
-    const status = searchParams.get('status');
+    const rawStatus = searchParams.get('status');
     const district = searchParams.get('district');
 
-    // Attempt Supabase fetch
+    // Standardize status: 'Pending', 'Pending_Inspection', or 'Pending_LMO' -> 'Pending_LMO'
+    let targetStatus = rawStatus;
+    if (rawStatus) {
+      const lower = rawStatus.toLowerCase();
+      if (lower === 'pending' || lower === 'pending_inspection' || lower === 'pending_lmo') {
+        targetStatus = 'Pending_LMO';
+      }
+    }
+
+    // 1. Primary: Fetch from Supabase traders_list
     if (supabase) {
       try {
-        // 1. First attempt traders_list (active legal metrology verification table)
         let listQuery = supabase.from('traders_list').select('*').limit(limit);
-        if (district) {
+
+        if (targetStatus && targetStatus !== 'All') {
+          listQuery = listQuery.eq('status', targetStatus);
+        }
+        if (district && district !== 'All') {
           listQuery = listQuery.ilike('district', `%${district}%`);
         }
+
         const { data: listData, error: listError } = await listQuery;
 
         if (!listError && listData && listData.length > 0) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let rows = listData.map((t: any) => ({
-            id: t.id,
-            trader_name: t.shop_name || t.trader_name || 'Registered Trader',
+          const rows = listData.map((t: any) => ({
+            id: t.license_number,
+            trader_name: t.trader_name || t.shop_name || 'Registered Trader',
             owner_name: t.owner_name || '',
             license_number: t.license_number,
-            latitude: t.latitude || 28.6139,
-            longitude: t.longitude || 77.209,
+            latitude: t.latitude ? parseFloat(t.latitude) : 28.8955,
+            longitude: t.longitude ? parseFloat(t.longitude) : 76.6066,
             district: t.district || 'Hisar',
-            inspection_status:
-              t.status === 'Approved'
-                ? 'Passed'
-                : t.status === 'Verified'
-                ? 'Passed'
-                : t.status === 'Scheduled'
-                ? 'Pending'
-                : t.status || 'Pending',
-            instrument_type: t.instrument_type || 'Electronic Scale',
-            assigned_officer: t.lmo_id || '',
+            status: t.status || 'Pending_LMO',
+            inspection_status: t.status || 'Pending_LMO',
+            instrument_type: t.instrument_type || 'Class III Electronic Weighing Scale',
+            trader_email: t.trader_email || '',
           }));
-
-          if (status && status !== 'All') {
-            rows = rows.filter((r) => r.inspection_status.toLowerCase() === status.toLowerCase());
-          }
 
           return NextResponse.json({
             success: true,
@@ -52,20 +55,20 @@ export async function GET(req: NextRequest) {
           });
         }
 
-        // 2. Fallback to 'traders' or 'lmo_mock_traders'
+        // 2. Secondary fallback to 'traders' or 'lmo_mock_traders'
         let query = supabase.from('traders').select('*').limit(limit);
-        if (district) {
+        if (district && district !== 'All') {
           query = query.ilike('district', `%${district}%`);
         }
-        if (status && status !== 'All') {
-          query = query.eq('inspection_status', status);
+        if (targetStatus && targetStatus !== 'All') {
+          query = query.or(`inspection_status.eq.${targetStatus},status.eq.${targetStatus}`);
         }
         let { data, error } = await query;
 
         if (error && error.message?.includes('Could not find the table')) {
           let fallbackQ = supabase.from('lmo_mock_traders').select('*').limit(limit);
-          if (status && status !== 'All') {
-            fallbackQ = fallbackQ.eq('inspection_status', status);
+          if (targetStatus && targetStatus !== 'All') {
+            fallbackQ = fallbackQ.eq('inspection_status', targetStatus);
           }
           const res = await fallbackQ;
           data = res.data;
@@ -171,6 +174,9 @@ export async function POST(req: NextRequest) {
       longitude,
       instrument_type,
       inspection_status,
+      status,
+      district,
+      trader_email,
     } = body;
 
     if (!trader_name || !owner_name) {
@@ -180,32 +186,45 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const dist = district || 'Hisar';
+    const distPrefix = dist.toUpperCase().substring(0, 3);
     const generatedLicense =
-      license_number || `LMO/2026/${Math.floor(10000 + Math.random() * 90000)}`;
+      license_number || `HR-LMO-${distPrefix}-2026-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    // Standardize status strictly to 'Pending_LMO'
+    const targetStatus = status || inspection_status || 'Pending_LMO';
+    const finalStatus =
+      targetStatus === 'Pending' || targetStatus === 'Pending_Inspection'
+        ? 'Pending_LMO'
+        : targetStatus;
 
     const newRecord = {
       trader_name: trader_name.trim(),
       owner_name: owner_name.trim(),
       license_number: generatedLicense.trim(),
-      latitude: latitude ? parseFloat(latitude) : 28.6139,
-      longitude: longitude ? parseFloat(longitude) : 77.209,
-      instrument_type: instrument_type || 'Electronic Weighing Scale',
-      inspection_status: inspection_status || 'Pending',
+      latitude: latitude ? parseFloat(latitude) : 28.8955,
+      longitude: longitude ? parseFloat(longitude) : 76.6066,
+      instrument_type: instrument_type || 'Class III Electronic Weighing Scale',
+      status: finalStatus,
+      district: dist,
+      trader_email: trader_email || 'trader@demo.com',
     };
 
     if (supabase) {
       try {
         const { data, error } = await supabase
-          .from('traders')
+          .from('traders_list')
           .insert([newRecord])
           .select()
           .maybeSingle();
 
         if (!error && data) {
           return NextResponse.json({ success: true, data }, { status: 201 });
+        } else if (error) {
+          console.warn('Supabase traders_list insert note:', error.message);
         }
-      } catch {
-        // Fallback
+      } catch (sbErr) {
+        console.warn('Supabase insert exception:', sbErr);
       }
     }
 

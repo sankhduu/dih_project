@@ -163,7 +163,7 @@ export default function ApplyPage() {
     };
 
     try {
-      // 1. Primary: Execute Supabase .insert() into traders_list
+      // 1. Direct Supabase insert into traders_list
       const { data, error } = await supabase
         .from('traders_list')
         .insert([supabasePayload])
@@ -171,9 +171,20 @@ export default function ApplyPage() {
         .single();
 
       if (error) {
-        console.warn('Supabase insert notice (fallback to local acknowledgement):', error);
+        console.warn('Supabase direct insert notice:', error.message);
       } else {
         console.log('✅ Successfully inserted trader application to Supabase traders_list:', data);
+      }
+
+      // 2. Also invoke Next.js POST /api/traders endpoint to guarantee server-side synchronization
+      try {
+        await fetch('/api/traders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(supabasePayload),
+        });
+      } catch (apiErr) {
+        console.warn('API route sync note:', apiErr);
       }
 
       const finalData = data || supabasePayload;

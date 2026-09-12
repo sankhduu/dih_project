@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'offline_sync_service.dart';
 
 /// Data model representing a Trader registered in the Legal Metrology System
@@ -12,8 +13,9 @@ class Trader {
   final String licenseNumber;
   final double? latitude;
   final double? longitude;
-  final String inspectionStatus; // 'Pending', 'Passed', 'Failed'
+  final String inspectionStatus; // 'Pending_LMO', 'Pending_GATC', 'Verified'
   final String instrumentType;
+  final String district;
 
   Trader({
     required this.id,
@@ -24,18 +26,20 @@ class Trader {
     this.longitude,
     required this.inspectionStatus,
     required this.instrumentType,
+    this.district = 'Hisar',
   });
 
   factory Trader.fromJson(Map<String, dynamic> json) {
     return Trader(
       id: (json['id'] ?? json['license_number'] ?? '').toString(),
-      traderName: json['trader_name'] ?? 'Unknown Trader',
+      traderName: json['trader_name'] ?? json['shop_name'] ?? 'Unknown Trader',
       ownerName: json['owner_name'] ?? 'Proprietor',
       licenseNumber: json['license_number'] ?? 'LMO/2026/00000',
       latitude: json['latitude'] != null ? double.tryParse(json['latitude'].toString()) : null,
       longitude: json['longitude'] != null ? double.tryParse(json['longitude'].toString()) : null,
-      inspectionStatus: json['inspection_status'] ?? 'Pending',
+      inspectionStatus: json['status'] ?? json['inspection_status'] ?? 'Pending_LMO',
       instrumentType: json['instrument_type'] ?? 'Weighing Scale',
+      district: json['district'] ?? 'Hisar',
     );
   }
 
@@ -49,6 +53,7 @@ class Trader {
       'longitude': longitude,
       'inspection_status': inspectionStatus,
       'instrument_type': instrumentType,
+      'district': district,
     };
   }
 }
@@ -63,10 +68,35 @@ class ApiService {
 
   ApiService({String? baseUrl}) : baseUrl = baseUrl ?? defaultBaseUrl;
 
-  /// Fetch all traders with 'Pending' inspection status with offline-first cache
-  Future<List<Trader>> fetchPendingTraders() async {
+  /// Fetch all traders with 'Pending_LMO' inspection status with offline-first cache
+  Future<List<Trader>> fetchPendingTraders({String? district}) async {
+    // 1. Direct Supabase REST fetch from traders_list
     try {
-      final uri = Uri.parse('$baseUrl/api/traders?status=Pending');
+      var query = Supabase.instance.client
+          .from('traders_list')
+          .select()
+          .eq('status', 'Pending_LMO');
+
+      if (district != null && district.isNotEmpty && district.toLowerCase() != 'all') {
+        query = query.ilike('district', '%$district%');
+      }
+
+      final List<dynamic> sbRes = await query;
+      if (sbRes.isNotEmpty) {
+        final traders = sbRes.map((item) => Trader.fromJson(Map<String, dynamic>.from(item))).toList();
+        await _syncService.cacheTraders(traders);
+        return traders;
+      }
+    } catch (sbErr) {
+      debugPrint('Direct Supabase fetch note in ApiService: $sbErr');
+    }
+
+    // 2. Secondary: API Server fetch
+    try {
+      final distParam = district != null && district.isNotEmpty && district.toLowerCase() != 'all'
+          ? '&district=${Uri.encodeComponent(district)}'
+          : '';
+      final uri = Uri.parse('$baseUrl/api/traders?status=Pending_LMO$distParam');
       final response = await http.get(uri).timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200) {
@@ -75,7 +105,6 @@ class ApiService {
           final List list = data['data'];
           if (list.isNotEmpty) {
             final traders = list.map((item) => Trader.fromJson(item)).toList();
-            // Automatically cache assigned pending traders locally
             await _syncService.cacheTraders(traders);
             return traders;
           }
@@ -85,14 +114,14 @@ class ApiService {
       debugPrint('Live API fetch skipped/offline: $e');
     }
 
-    // 1. If offline or error, load cached traders from local storage
+    // 3. If offline or error, load cached traders from local storage
     final cached = await _syncService.getCachedTraders();
     if (cached.isNotEmpty) {
       debugPrint('📦 Serving ${cached.length} assigned traders from offline local cache.');
       return cached;
     }
 
-    // 2. Return realistic sample pending traders if cache is not yet populated
+    // 4. Return realistic sample pending traders if cache is not yet populated
     final sample = _getFallbackPendingTraders();
     await _syncService.cacheTraders(sample);
     return sample;
@@ -168,14 +197,26 @@ class ApiService {
   List<Trader> _getFallbackPendingTraders() {
     return [
       Trader(
-        id: 'LMO/2026/10001',
-        traderName: 'Schowalter - Abshire Kirana Store',
-        ownerName: 'Wilbert Dare',
-        licenseNumber: 'LMO/2026/10001',
-        latitude: 28.506350,
-        longitude: 76.676494,
-        inspectionStatus: 'Pending',
-        instrumentType: 'Platform Scale',
+        id: 'LMO-ROH-001',
+        traderName: 'Rohtak Sweets & Confectionery',
+        ownerName: 'Rahul Sharma',
+        licenseNumber: 'LMO-ROH-001',
+        latitude: 28.8955,
+        longitude: 76.5833,
+        inspectionStatus: 'Pending_LMO',
+        instrumentType: 'Class III Electronic Weighing Scale',
+        district: 'Rohtak',
+      ),
+      Trader(
+        id: 'LMO-HIS-001',
+        traderName: 'Mohan Kirana Store',
+        ownerName: 'Mohan Lal',
+        licenseNumber: 'LMO-HIS-001',
+        latitude: 29.1539,
+        longitude: 75.7114,
+        inspectionStatus: 'Pending_LMO',
+        instrumentType: 'Class III Electronic Table Top Scale',
+        district: 'Hisar',
       ),
       Trader(
         id: 'LMO/2026/10003',
@@ -184,18 +225,9 @@ class ApiService {
         licenseNumber: 'LMO/2026/10003',
         latitude: 29.391101,
         longitude: 77.227515,
-        inspectionStatus: 'Pending',
+        inspectionStatus: 'Pending_LMO',
         instrumentType: 'Platform Scale',
-      ),
-      Trader(
-        id: 'LMO/2026/10004',
-        traderName: 'Jast Batz and Lang Dairy & Sweets',
-        ownerName: 'Nathen Hoeger',
-        licenseNumber: 'LMO/2026/10004',
-        latitude: 29.216021,
-        longitude: 77.381054,
-        inspectionStatus: 'Pending',
-        instrumentType: 'Flow Meter',
+        district: 'Panipat',
       ),
       Trader(
         id: 'LMO/2026/10006',
@@ -204,18 +236,9 @@ class ApiService {
         licenseNumber: 'LMO/2026/10006',
         latitude: 28.902579,
         longitude: 76.686301,
-        inspectionStatus: 'Pending',
+        inspectionStatus: 'Pending_LMO',
         instrumentType: 'Electronic Weighing Scale',
-      ),
-      Trader(
-        id: 'LMO/2026/10007',
-        traderName: 'Ritchie Howell General Trading Co',
-        ownerName: 'Maritza Lang MD',
-        licenseNumber: 'LMO/2026/10007',
-        latitude: 29.399768,
-        longitude: 77.029012,
-        inspectionStatus: 'Pending',
-        instrumentType: 'Platform Scale',
+        district: 'Gurugram',
       ),
       Trader(
         id: 'LMO/2026/10009',
@@ -224,18 +247,9 @@ class ApiService {
         licenseNumber: 'LMO/2026/10009',
         latitude: 29.475476,
         longitude: 76.773539,
-        inspectionStatus: 'Pending',
+        inspectionStatus: 'Pending_LMO',
         instrumentType: 'Analytical Precision Balance',
-      ),
-      Trader(
-        id: 'LMO/2026/10011',
-        traderName: 'Rippin - Moore Jewellers',
-        ownerName: 'Mr. Torrance Sipes',
-        licenseNumber: 'LMO/2026/10011',
-        latitude: 29.619012,
-        longitude: 77.465213,
-        inspectionStatus: 'Pending',
-        instrumentType: 'Analytical Precision Balance',
+        district: 'Karnal',
       ),
     ];
   }

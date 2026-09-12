@@ -291,26 +291,48 @@ async function queryTradersTable(buildQuery) {
 app.get('/api/traders', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit, 10) || 100;
-    const status = req.query.status;
+    const rawStatus = req.query.status;
     const district = req.query.district;
+
+    let targetStatus = rawStatus;
+    if (rawStatus) {
+      const lower = rawStatus.toLowerCase();
+      if (lower === 'pending' || lower === 'pending_inspection' || lower === 'pending_lmo') {
+        targetStatus = 'Pending_LMO';
+      }
+    }
 
     if (supabase && isSupabaseConfigured) {
       const { data, error } = await queryTradersTable((tableName) => {
         let q = supabase.from(tableName).select('*').limit(limit);
-        if (status) {
-          q = q.or(`inspection_status.eq.${status},status.eq.${status}`);
+        if (targetStatus && targetStatus !== 'All') {
+          q = q.or(`inspection_status.eq.${targetStatus},status.eq.${targetStatus}`);
         }
-        if (district) {
+        if (district && district !== 'All') {
           q = q.ilike('district', `%${district}%`);
         }
         return q;
       });
 
       if (!error && data && data.length > 0) {
+        const formatted = data.map((t) => ({
+          id: t.id || t.license_number,
+          trader_name: t.trader_name || t.shop_name || 'Registered Trader',
+          owner_name: t.owner_name || '',
+          license_number: t.license_number,
+          latitude: t.latitude ? parseFloat(t.latitude) : 28.8955,
+          longitude: t.longitude ? parseFloat(t.longitude) : 76.6066,
+          district: t.district || 'Hisar',
+          status: t.status || 'Pending_LMO',
+          inspection_status: t.status || 'Pending_LMO',
+          instrument_type: t.instrument_type || 'Class III Electronic Weighing Scale',
+          trader_email: t.trader_email || '',
+        }));
+
         return res.status(200).json({
           success: true,
-          count: data.length,
-          data,
+          count: formatted.length,
+          data: formatted,
         });
       }
 
@@ -413,6 +435,9 @@ app.post('/api/traders', async (req, res) => {
       longitude,
       instrument_type,
       inspection_status,
+      status,
+      district,
+      trader_email,
     } = req.body;
 
     if (!trader_name || !owner_name) {
@@ -423,44 +448,76 @@ app.post('/api/traders', async (req, res) => {
       });
     }
 
+    const dist = district || 'Hisar';
+    const distPrefix = dist.toUpperCase().substring(0, 3);
     const generatedLicense =
       license_number ||
-      `LMO/2026/${Math.floor(10000 + Math.random() * 90000)}`;
+      `HR-LMO-${distPrefix}-2026-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    const targetStatus = status || inspection_status || 'Pending_LMO';
+    const finalStatus =
+      targetStatus === 'Pending' || targetStatus === 'Pending_Inspection'
+        ? 'Pending_LMO'
+        : targetStatus;
 
     const newTraderRecord = {
       trader_name: trader_name.trim(),
       owner_name: owner_name.trim(),
       license_number: generatedLicense.trim(),
-      latitude: latitude ? parseFloat(latitude) : 28.6139,
-      longitude: longitude ? parseFloat(longitude) : 77.2090,
-      instrument_type: instrument_type || 'Electronic Weighing Scale',
-      inspection_status: inspection_status || 'Pending',
+      latitude: latitude ? parseFloat(latitude) : 28.8955,
+      longitude: longitude ? parseFloat(longitude) : 76.6066,
+      instrument_type: instrument_type || 'Class III Electronic Weighing Scale',
+      status: finalStatus,
+      inspection_status: finalStatus,
+      district: dist,
+      trader_email: trader_email || 'trader@demo.com',
     };
 
     if (supabase && isSupabaseConfigured) {
-      const { data, error } = await queryTradersTable(async (tableName) => {
-        return await supabase
-          .from(tableName)
-          .insert([newTraderRecord])
+      // 1. Primary insert into traders_list
+      let insertedData = null;
+      try {
+        const { data: listData, error: listError } = await supabase
+          .from('traders_list')
+          .insert([{
+            trader_name: newTraderRecord.trader_name,
+            owner_name: newTraderRecord.owner_name,
+            license_number: newTraderRecord.license_number,
+            latitude: newTraderRecord.latitude,
+            longitude: newTraderRecord.longitude,
+            instrument_type: newTraderRecord.instrument_type,
+            status: newTraderRecord.status,
+            district: newTraderRecord.district,
+            trader_email: newTraderRecord.trader_email,
+          }])
           .select()
           .maybeSingle();
-      });
 
-      if (error) {
-        console.warn('Note inserting trader into Supabase:', error.message);
-        // Fallback response with valid generated payload
-        return res.status(201).json({
-          success: true,
-          message: 'Trader registration recorded in system',
-          data: newTraderRecord,
-        });
+        if (!listError && listData) {
+          insertedData = listData;
+        } else if (listError) {
+          console.warn('Note inserting into traders_list, trying fallback:', listError.message);
+        }
+      } catch (insertErr) {
+        console.warn('Supabase traders_list exception:', insertErr);
       }
 
-      console.log(`✅ Registered new trader: ${newTraderRecord.trader_name} (${newTraderRecord.license_number})`);
+      if (!insertedData) {
+        const { data, error } = await queryTradersTable(async (tableName) => {
+          return await supabase
+            .from(tableName)
+            .insert([newTraderRecord])
+            .select()
+            .maybeSingle();
+        });
+        if (!error && data) insertedData = data;
+      }
+
+      console.log(`✅ Registered new trader: ${newTraderRecord.trader_name} (${newTraderRecord.license_number}) [${newTraderRecord.status}]`);
       return res.status(201).json({
         success: true,
         message: 'Trader application registered successfully',
-        data: data || newTraderRecord,
+        data: insertedData || newTraderRecord,
       });
     } else {
       SAMPLE_MOCK_TRADERS[generatedLicense] = newTraderRecord;
@@ -489,19 +546,23 @@ const handleTraderPatch = async (req, res) => {
   try {
     const rawId = req.params.id;
     const id = decodeURIComponent(rawId).trim();
-    const { assigned_officer, inspection_status } = req.body;
+    const { assigned_officer, inspection_status, status } = req.body;
 
-    if (assigned_officer === undefined && inspection_status === undefined) {
+    if (assigned_officer === undefined && inspection_status === undefined && status === undefined) {
       return res.status(400).json({
         success: false,
         error: 'No update fields provided',
-        message: 'Please provide assigned_officer or inspection_status in request body.',
+        message: 'Please provide assigned_officer, inspection_status, or status in request body.',
       });
     }
 
     const updates = {};
     if (assigned_officer !== undefined) updates.assigned_officer = assigned_officer;
-    if (inspection_status !== undefined) updates.inspection_status = inspection_status;
+    if (status !== undefined) updates.status = status;
+    if (inspection_status !== undefined) {
+      updates.inspection_status = inspection_status;
+      if (!updates.status) updates.status = inspection_status;
+    }
 
     if (supabase && isSupabaseConfigured) {
       const isNumericId = !isNaN(Number(id));
@@ -628,6 +689,7 @@ app.post('/api/inspections/sync', async (req, res) => {
         return await supabase
           .from(tableName)
           .update({
+            status: inspection_status,
             inspection_status: inspection_status,
           })
           .eq('license_number', license_number);

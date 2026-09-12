@@ -1,4 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/offline_sync_service.dart';
 import 'login_screen.dart';
@@ -10,7 +13,7 @@ class DashboardScreen extends StatefulWidget {
 
   const DashboardScreen({
     super.key,
-    this.district = 'Hisar',
+    this.district = 'All',
     this.officerEmail = '',
   });
 
@@ -24,21 +27,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static const Color emeraldGreen = Color(0xFF059669);
 
   late String _selectedDistrict;
-  List<Map<String, dynamic>>? _fallbackTraders;
-  bool _isLoadingFallback = false;
-  bool _hasTriggeredFallback = false;
+  List<Map<String, dynamic>> _liveTraders = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+  StreamSubscription<List<Map<String, dynamic>>>? _streamSubscription;
 
   @override
   void initState() {
     super.initState();
-    _selectedDistrict = widget.district.isNotEmpty ? widget.district : 'Hisar';
+    _selectedDistrict = widget.district.isNotEmpty ? widget.district : 'All';
     OfflineSyncService().addListener(_onSyncServiceUpdated);
     OfflineSyncService().loadOfflineApprovals();
-    _fetchFallbackData();
+
+    // 1. Force live REST fetch on screen load (bypassing any stale offline cache)
+    _fetchLiveTraders();
+
+    // 2. Setup Realtime subscription to receive instant updates
+    _setupRealtimeSubscription();
   }
 
   @override
   void dispose() {
+    _streamSubscription?.cancel();
     OfflineSyncService().removeListener(_onSyncServiceUpdated);
     super.dispose();
   }
@@ -49,14 +59,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _fetchFallbackData() async {
+  /// Force a live REST fetch directly from Supabase traders_list table with status 'Pending_LMO'
+  Future<void> _fetchLiveTraders() async {
     if (!mounted) return;
     setState(() {
-      _isLoadingFallback = true;
+      _isLoading = true;
+      _errorMessage = null;
     });
 
     try {
-      // Fetch traders where status is 'Pending_LMO'
+      // Direct live REST fetch from Supabase traders_list table
       final List<dynamic> response = await Supabase.instance.client
           .from('traders_list')
           .select()
@@ -64,29 +76,67 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       if (mounted) {
         setState(() {
-          _fallbackTraders = List<Map<String, dynamic>>.from(response);
-          _isLoadingFallback = false;
+          _liveTraders = List<Map<String, dynamic>>.from(response);
+          _isLoading = false;
         });
+        debugPrint('✅ [LMO Dashboard] Live REST fetch loaded ${_liveTraders.length} Pending_LMO applications.');
       }
     } catch (e) {
-      debugPrint('Fallback select error: $e');
+      debugPrint('⚠️ [LMO Dashboard] Supabase direct REST fetch notice: $e');
+
+      // Fallback: Check local Express/Next.js API server
+      try {
+        final apiUri = Uri.parse('http://localhost:5000/api/traders?status=Pending_LMO');
+        final httpRes = await http.get(apiUri).timeout(const Duration(seconds: 4));
+        if (httpRes.statusCode == 200) {
+          final body = json.decode(httpRes.body);
+          if (body['success'] == true && body['data'] is List) {
+            final List list = body['data'];
+            if (mounted) {
+              setState(() {
+                _liveTraders = List<Map<String, dynamic>>.from(list);
+                _isLoading = false;
+              });
+              return;
+            }
+          }
+        }
+      } catch (apiErr) {
+        debugPrint('⚠️ [LMO Dashboard] API fallback notice: $apiErr');
+      }
+
       if (mounted) {
         setState(() {
-          _fallbackTraders ??= [];
-          _isLoadingFallback = false;
+          _errorMessage = e.toString();
+          _isLoading = false;
         });
       }
     }
   }
 
-  void _triggerFallbackIfNeeded() {
-    if (!_hasTriggeredFallback && !_isLoadingFallback) {
-      _hasTriggeredFallback = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _fetchFallbackData();
-        }
-      });
+  /// Setup Realtime stream to dynamically receive newly inserted applications
+  void _setupRealtimeSubscription() {
+    try {
+      _streamSubscription = Supabase.instance.client
+          .from('traders_list')
+          .stream(primaryKey: ['license_number'])
+          .eq('status', 'Pending_LMO')
+          .listen(
+        (data) {
+          if (mounted) {
+            setState(() {
+              _liveTraders = data;
+              _isLoading = false;
+            });
+            debugPrint('⚡ [LMO Dashboard] Realtime stream event: ${data.length} Pending_LMO rows.');
+          }
+        },
+        onError: (err) {
+          debugPrint('⚠️ [LMO Dashboard] Realtime stream notice (REST remains active): $err');
+        },
+      );
+    } catch (e) {
+      debugPrint('⚠️ [LMO Dashboard] Realtime setup notice: $e');
     }
   }
 
@@ -107,7 +157,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _handleManualSync() async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final result = await OfflineSyncService().syncOfflineQueue();
-    await _fetchFallbackData();
+    await _fetchLiveTraders();
 
     scaffoldMessenger.showSnackBar(
       SnackBar(
@@ -154,7 +204,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(width: 10),
           const Expanded(
             child: Text(
-              'Live stream offline. Showing cached / REST data...',
+              'Offline or connection notice. Showing local records.',
               style: TextStyle(
                 color: Color(0xFF92400E),
                 fontSize: 13,
@@ -162,7 +212,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
           ),
-          if (_isLoadingFallback)
+          if (_isLoading)
             const SizedBox(
               width: 14,
               height: 14,
@@ -176,8 +226,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               icon: const Icon(Icons.refresh, size: 18, color: Color(0xFFB45309)),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
-              tooltip: 'Retry fetch',
-              onPressed: _fetchFallbackData,
+              tooltip: 'Retry live fetch',
+              onPressed: _fetchLiveTraders,
             ),
         ],
       ),
@@ -185,7 +235,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildDistrictFilterBar() {
-    final districts = ['Hisar', 'Rohtak', 'All'];
+    final districts = [
+      'All',
+      'Rohtak',
+      'Hisar',
+      'Gurugram',
+      'Faridabad',
+      'Ambala',
+      'Panipat',
+      'Karnal',
+      'Sonipat',
+    ];
+
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -245,41 +306,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }).toList();
 
     if (filteredTraders.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey.shade400),
-              const SizedBox(height: 12),
-              Text(
-                'No pending inspections for $_selectedDistrict.',
-                style: TextStyle(fontSize: 15, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
-                textAlign: TextAlign.center,
+      return LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey.shade400),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No pending inspections for $_selectedDistrict.',
+                      style: TextStyle(fontSize: 15, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Pull down to refresh or tap "Show All Districts" to view applications across Haryana.',
+                      style: TextStyle(fontSize: 12, color: Colors.black45),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (_selectedDistrict.toLowerCase() != 'all') ...[
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _selectedDistrict = 'All';
+                          });
+                        },
+                        icon: const Icon(Icons.public, size: 16),
+                        label: const Text('Show All Districts'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryNavy,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 6),
-              const Text(
-                'All commercial instruments in this jurisdiction have been processed or forwarded to GATC.',
-                style: TextStyle(fontSize: 12, color: Colors.black45),
-                textAlign: TextAlign.center,
-              ),
-            ],
+            ),
           ),
         ),
       );
     }
 
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       itemCount: filteredTraders.length,
       itemBuilder: (context, index) {
         final trader = filteredTraders[index];
-        final traderName = trader['trader_name']?.toString() ?? 'Commercial Trader';
+        final traderName = trader['trader_name']?.toString() ?? trader['shop_name']?.toString() ?? 'Commercial Trader';
         final ownerName = trader['owner_name']?.toString() ?? '';
         final instrumentType = trader['instrument_type']?.toString() ?? 'Weighing Scale';
         final licenseNumber = trader['license_number']?.toString() ?? '';
-        final district = trader['district']?.toString() ?? '';
+        final district = trader['district']?.toString() ?? 'Hisar';
 
         final bool isSavedOffline = OfflineSyncService().isSavedOffline(licenseNumber);
 
@@ -308,7 +394,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               );
 
               if (result == true) {
-                await _fetchFallbackData();
+                await _fetchLiveTraders();
               }
             },
             child: Padding(
@@ -418,13 +504,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 2),
-                            Text(
-                              'Lic: $licenseNumber • District: $district',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontFamily: 'monospace',
-                                color: Colors.grey.shade600,
-                              ),
+                            Row(
+                              children: [
+                                Text(
+                                  'Lic: $licenseNumber',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontFamily: 'monospace',
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade200,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    district,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: primaryNavy,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -498,7 +604,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh Queue',
-            onPressed: _fetchFallbackData,
+            onPressed: _fetchLiveTraders,
           ),
           IconButton(
             icon: const Icon(Icons.logout),
@@ -509,49 +615,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       body: Column(
         children: [
+          if (_errorMessage != null && _liveTraders.isEmpty) _buildOfflineBanner(),
           _buildDistrictFilterBar(),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: _fetchFallbackData,
-              child: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: Supabase.instance.client
-                    .from('traders_list')
-                    .stream(primaryKey: ['license_number'])
-                    .eq('status', 'Pending_LMO'),
-                builder: (context, snapshot) {
-                  // 1. Error handling fallback
-                  if (snapshot.hasError) {
-                    _triggerFallbackIfNeeded();
-
-                    return Column(
-                      children: [
-                        _buildOfflineBanner(),
-                        Expanded(
-                          child: _isLoadingFallback && _fallbackTraders == null
-                              ? const Center(child: CircularProgressIndicator())
-                              : _buildTraderList(_fallbackTraders ?? []),
-                        ),
-                      ],
-                    );
-                  }
-
-                  // 2. Initial loading state before stream emits and without cached data
-                  if (snapshot.connectionState == ConnectionState.waiting && _fallbackTraders == null) {
-                    return const Center(
-                      child: CircularProgressIndicator(),
-                    );
-                  }
-
-                  // 3. Live stream data state: update cached copy
-                  if (snapshot.hasData && snapshot.data != null) {
-                    _fallbackTraders = snapshot.data;
-                    _hasTriggeredFallback = false;
-                  }
-
-                  final traders = snapshot.data ?? _fallbackTraders ?? [];
-                  return _buildTraderList(traders);
-                },
-              ),
+              onRefresh: _fetchLiveTraders,
+              color: primaryNavy,
+              child: _isLoading && _liveTraders.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : _buildTraderList(_liveTraders),
             ),
           ),
         ],
