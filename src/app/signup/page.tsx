@@ -124,6 +124,11 @@ export default function SignupPage() {
         pinCode: '110001',
       });
 
+      if (selectedRole === 'Trader') {
+        router.push('/trader/dashboard');
+        return;
+      }
+
       const needsConfirmation = !authData.session && user?.identities?.length !== 0;
 
       setSuccessData({

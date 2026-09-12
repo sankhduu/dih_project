@@ -149,24 +149,17 @@ export default function ApplyPage() {
     const chosenLat = latitude ? parseFloat(latitude) : (defaultCoords[district]?.lat || 28.8955);
     const chosenLng = longitude ? parseFloat(longitude) : (defaultCoords[district]?.lng || 76.6066);
 
-    // Exact payload matching public.traders_list schema with new trader_email column
+    // Exact payload matching public.traders_list schema
     const supabasePayload = {
-      shop_name: traderName.trim(),
       trader_name: traderName.trim(),
       owner_name: ownerName.trim(),
-      trader_email: userEmail, // Strictly linked to authenticated trader session
       license_number: generatedLicense,
-      district: district, // Exact match: 'Hisar' or 'Rohtak'
-      status: 'Pending_Inspection' as const, // Strictly exact string
-      address: address.trim() || `${district}, Haryana`,
-      instrument_type: instrumentType,
-      capacity: capacity.trim() || '30 kg (e = 5 g)',
-      make_model: `${instrumentType} - Standard Model`,
       latitude: chosenLat,
       longitude: chosenLng,
-      checklist_confirmed: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      instrument_type: instrumentType,
+      status: 'Pending_LMO',
+      district: district,
+      trader_email: userEmail,
     };
 
     try {
@@ -554,7 +547,7 @@ export default function ApplyPage() {
                 <div>
                   <span className="text-slate-500 block text-[11px]">Initial Status:</span>
                   <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded inline-block font-mono text-[11px]">
-                    Pending_Inspection
+                    Pending_LMO
                   </span>
                 </div>
                 <div className="col-span-2 pt-1">

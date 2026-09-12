@@ -160,19 +160,24 @@ export default function GatcDashboardPage() {
       const { data, error } = await supabase
         .from('traders_list')
         .select('*')
-        .eq('status', 'Pending_GATC')
-        .order('created_at', { ascending: false });
+        .order('license_number', { ascending: false });
 
       if (data && !error && data.length > 0) {
+        // Exclude pending LMO inspections from GATC dashboard
+        const gatcRelevant = data.filter((d) => {
+          const st = (d.status || '').toLowerCase();
+          return st !== 'pending_lmo' && st !== 'pending_inspection' && st !== 'pending';
+        });
+
         setShops((prev) => {
-          const fetchedLicSet = new Set(data.map((d) => d.license_number || d.id));
+          const fetchedLicSet = new Set(gatcRelevant.map((d) => d.license_number || d.id));
           const approvedOrRejected = prev.filter(
-            (p) => p.status === 'Approved' || p.status === 'Rejected'
+            (p) => p.status === 'Approved' || p.status === 'Verified' || p.status === 'Rejected'
           );
           const nonOverlapping = approvedOrRejected.filter(
             (p) => !fetchedLicSet.has(p.license_number || p.id)
           );
-          return [...data, ...nonOverlapping] as TraderRecord[];
+          return [...gatcRelevant, ...nonOverlapping] as TraderRecord[];
         });
       } else {
         setShops(SEED_SHOPS);
@@ -200,9 +205,9 @@ export default function GatcDashboardPage() {
           const updatedRow = (payload.new || payload.old) as TraderRecord;
           if (!updatedRow) return;
 
-          // Exclude Pending_Inspection from GATC portal
+          // Exclude Pending_LMO from GATC portal
           const statusNorm = (updatedRow.status || '').toLowerCase();
-          if (statusNorm === 'pending_inspection' || statusNorm === 'pending') {
+          if (statusNorm === 'pending_lmo' || statusNorm === 'pending_inspection' || statusNorm === 'pending') {
             setShops((prev) =>
               prev.filter(
                 (s) => s.license_number !== updatedRow.license_number && s.id !== updatedRow.id
@@ -245,7 +250,7 @@ export default function GatcDashboardPage() {
             setSyncToast({
               visible: true,
               title: '⚡ Live LMO Inspection Received!',
-              message: `${updatedRow.shop_name} (${updatedRow.license_number}) has been submitted to Pending_GATC and is ready for signing.`,
+              message: `${updatedRow.shop_name || updatedRow.trader_name} (${updatedRow.license_number}) has been submitted to Pending_GATC and is ready for signing.`,
               type: 'success',
             });
             setTimeout(() => setSyncToast((prev) => ({ ...prev, visible: false })), 7000);
@@ -254,8 +259,14 @@ export default function GatcDashboardPage() {
       )
       .subscribe();
 
+    // Heartbeat poll every 4s to guarantee real-time updates without page refresh
+    const pollTimer = setInterval(() => {
+      fetchShops();
+    }, 4000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(pollTimer);
     };
   }, []);
 
@@ -273,13 +284,13 @@ export default function GatcDashboardPage() {
       const statusNorm = (s.status || '').toLowerCase();
       let matchesStatus = true;
       if (selectedStatus === 'Pending_GATC' || selectedStatus === 'Under_Review') {
-        matchesStatus = statusNorm === 'pending_gatc' || statusNorm === 'under_review' || statusNorm === 'verified';
+        matchesStatus = statusNorm === 'pending_gatc' || statusNorm === 'under_review';
       } else if (selectedStatus === 'Approved') {
-        matchesStatus = statusNorm === 'approved';
+        matchesStatus = statusNorm === 'verified' || statusNorm === 'approved';
       } else if (selectedStatus === 'Rejected') {
         matchesStatus = statusNorm === 'rejected';
       } else if (selectedStatus === 'All') {
-        matchesStatus = statusNorm !== 'pending_inspection' && statusNorm !== 'pending';
+        matchesStatus = statusNorm !== 'pending_lmo' && statusNorm !== 'pending_inspection' && statusNorm !== 'pending';
       }
 
       // District Filter: when GATC officer selects a district, ONLY show users from that specific district
@@ -301,13 +312,19 @@ export default function GatcDashboardPage() {
   }, [shops, selectedDistrict]);
 
   const totalCount = districtScopedShops.filter(
-    (s) => (s.status || '').toLowerCase() !== 'pending_inspection' && (s.status || '').toLowerCase() !== 'pending'
+    (s) => {
+      const sn = (s.status || '').toLowerCase();
+      return sn !== 'pending_lmo' && sn !== 'pending_inspection' && sn !== 'pending';
+    }
   ).length;
   const pendingGatcCount = districtScopedShops.filter((s) => {
     const sn = (s.status || '').toLowerCase();
-    return sn === 'pending_gatc' || sn === 'under_review' || sn === 'verified';
+    return sn === 'pending_gatc' || sn === 'under_review';
   }).length;
-  const approvedCount = districtScopedShops.filter((s) => (s.status || '').toLowerCase() === 'approved').length;
+  const approvedCount = districtScopedShops.filter((s) => {
+    const sn = (s.status || '').toLowerCase();
+    return sn === 'verified' || sn === 'approved';
+  }).length;
   const rejectedCount = districtScopedShops.filter((s) => (s.status || '').toLowerCase() === 'rejected').length;
 
   // ACTION: Digitally Sign & Approve
@@ -326,10 +343,7 @@ export default function GatcDashboardPage() {
         await supabase
           .from('traders_list')
           .update({
-            status: 'Approved',
-            digital_signature: signatureHash,
-            signed_at: signedTimestamp,
-            updated_at: signedTimestamp,
+            status: 'Verified',
           })
           .eq('license_number', shop.license_number);
       } catch (dbErr) {
@@ -339,7 +353,7 @@ export default function GatcDashboardPage() {
       // Update local state immediately
       const updatedRecord: TraderRecord = {
         ...shop,
-        status: 'Approved',
+        status: 'Verified',
         digital_signature: signatureHash,
         signed_at: signedTimestamp,
         updated_at: signedTimestamp,

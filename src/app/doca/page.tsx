@@ -173,7 +173,7 @@ export default function DocaDashboardPage() {
       const { data, error } = await supabase
         .from('traders_list')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('license_number', { ascending: false });
 
       if (data && !error && data.length > 0) {
         const fetchedMap = new Map(data.map((d) => [d.id || d.license_number, d]));

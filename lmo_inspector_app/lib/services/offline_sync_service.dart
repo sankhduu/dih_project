@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'api_service.dart';
 
 /// Data model for an offline-queued inspection report
@@ -84,6 +85,7 @@ class OfflineSyncService extends ChangeNotifier {
 
   static const String _cachedTradersKey = 'LMO_CACHED_TRADERS_V1';
   static const String _offlineQueueKey = 'LMO_OFFLINE_INSPECTIONS_QUEUE_V1';
+  static const String _offlineApprovalsKey = 'offline_pending_approvals';
 
   final Connectivity _connectivity = Connectivity();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
@@ -91,15 +93,19 @@ class OfflineSyncService extends ChangeNotifier {
   bool _isOnline = true;
   bool _isSyncing = false;
   List<OfflineInspectionReport> _queuedReports = [];
+  List<Map<String, dynamic>> _offlineApprovals = [];
 
   bool get isOnline => _isOnline;
   bool get isSyncing => _isSyncing;
   List<OfflineInspectionReport> get queuedReports => _queuedReports;
-  int get pendingCount => _queuedReports.length;
+  List<Map<String, dynamic>> get offlineApprovals => _offlineApprovals;
+  int get pendingCount => _offlineApprovals.length + _queuedReports.length;
+  int get pendingApprovalsCount => _offlineApprovals.length;
 
   /// Initialize connectivity monitoring and load stored offline queue
   Future<void> initialize() async {
     await _loadStoredQueue();
+    await loadOfflineApprovals();
 
     // Check initial connectivity
     try {
@@ -121,11 +127,81 @@ class OfflineSyncService extends ChangeNotifier {
     _isOnline = hasConnection;
     notifyListeners();
 
-    // If connection was just restored and we have pending reports, trigger auto-sync
-    if (!previousStatus && hasConnection && _queuedReports.isNotEmpty) {
-      debugPrint('🌐 Internet restored! Auto-triggering background sync for ${_queuedReports.length} queued inspections...');
+    // If connection was just restored and we have pending approvals/reports, trigger auto-sync
+    if (!previousStatus && hasConnection && (_offlineApprovals.isNotEmpty || _queuedReports.isNotEmpty)) {
+      debugPrint('🌐 Internet restored! Auto-triggering background sync...');
       syncOfflineQueue();
     }
+  }
+
+  // ===========================================================================
+  // OFFLINE APPROVALS ENGINE (DIRECT SUPABASE HANDSHAKE)
+  // ===========================================================================
+
+  /// Load pending offline approvals from SharedPreferences
+  Future<List<Map<String, dynamic>>> loadOfflineApprovals() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final List<String> rawList = prefs.getStringList(_offlineApprovalsKey) ?? [];
+      _offlineApprovals = rawList.map((item) {
+        try {
+          return Map<String, dynamic>.from(jsonDecode(item));
+        } catch (_) {
+          return <String, dynamic>{};
+        }
+      }).where((m) => m.isNotEmpty && m['license_number'] != null).toList();
+      notifyListeners();
+      return _offlineApprovals;
+    } catch (e) {
+      debugPrint('Error loading offline approvals: $e');
+      return [];
+    }
+  }
+
+  /// Save an inspection approval locally when offline
+  Future<void> saveOfflineApproval({
+    required String licenseNumber,
+    required String traderName,
+    required double latitude,
+    required double longitude,
+    String? photoPath,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final List<String> current = prefs.getStringList(_offlineApprovalsKey) ?? [];
+
+      final approvalRecord = {
+        'license_number': licenseNumber,
+        'trader_name': traderName,
+        'status': 'Pending_GATC',
+        'latitude': latitude,
+        'longitude': longitude,
+        'photo_path': photoPath,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+
+      // Remove existing entry for same license to prevent duplicates
+      current.removeWhere((item) {
+        try {
+          final dec = jsonDecode(item);
+          return dec['license_number'] == licenseNumber;
+        } catch (_) {
+          return false;
+        }
+      });
+
+      current.add(jsonEncode(approvalRecord));
+      await prefs.setStringList(_offlineApprovalsKey, current);
+      await loadOfflineApprovals();
+      debugPrint('📦 Stored approval offline for $licenseNumber. Total queued approvals: ${_offlineApprovals.length}');
+    } catch (e) {
+      debugPrint('Error saving offline approval: $e');
+    }
+  }
+
+  /// Check if a given trader license has been saved offline
+  bool isSavedOffline(String licenseNumber) {
+    return _offlineApprovals.any((a) => a['license_number'] == licenseNumber);
   }
 
   // ===========================================================================
@@ -160,7 +236,7 @@ class OfflineSyncService extends ChangeNotifier {
   }
 
   // ===========================================================================
-  // OFFLINE QUEUE MANAGEMENT
+  // OFFLINE QUEUE MANAGEMENT (LEGACY FORM SUPPORT)
   // ===========================================================================
 
   Future<void> _loadStoredQueue() async {
@@ -196,76 +272,127 @@ class OfflineSyncService extends ChangeNotifier {
   }
 
   // ===========================================================================
-  // BACKGROUND SYNC LISTENER & UPLOADER (WITH MULTIPART PHOTO UPLOAD)
+  // BACKGROUND SYNC ENGINE (PUSHES PENDING_GATC DIRECTLY TO SUPABASE)
   // ===========================================================================
 
-  /// Synchronize all pending offline reports with the backend API
+  /// Synchronize all pending offline approvals & reports with Supabase
   Future<SyncResult> syncOfflineQueue({String? baseUrl}) async {
-    if (_isSyncing) return SyncResult(syncedCount: 0, remainingCount: _queuedReports.length, success: false);
-    if (_queuedReports.isEmpty) return SyncResult(syncedCount: 0, remainingCount: 0, success: true);
+    if (_isSyncing) {
+      return SyncResult(syncedCount: 0, remainingCount: pendingCount, success: false);
+    }
+
+    await loadOfflineApprovals();
+    if (_offlineApprovals.isEmpty && _queuedReports.isEmpty) {
+      return SyncResult(syncedCount: 0, remainingCount: 0, success: true);
+    }
 
     _isSyncing = true;
     notifyListeners();
 
-    final targetBaseUrl = baseUrl ?? ApiService.defaultBaseUrl;
-    final List<OfflineInspectionReport> successfullySynced = [];
     int successCount = 0;
+    final List<String> successfullySyncedLicenses = [];
+    final supabase = Supabase.instance.client;
 
-    for (final report in List<OfflineInspectionReport>.from(_queuedReports)) {
+    // 1. Sync all locally saved approvals to Supabase traders_list
+    for (final item in List<Map<String, dynamic>>.from(_offlineApprovals)) {
+      final lic = item['license_number']?.toString() ?? '';
+      if (lic.isEmpty) continue;
+
+      final lat = (item['latitude'] as num?)?.toDouble() ?? 28.8955;
+      final lng = (item['longitude'] as num?)?.toDouble() ?? 76.6066;
+      final photoPath = item['photo_path']?.toString();
+
       try {
-        // 1. Upload cached inspection photo via MultipartRequest if present
-        if (report.photoPath != null && File(report.photoPath!).existsSync()) {
+        // Upload photo to Supabase storage if photo file exists locally
+        if (photoPath != null && File(photoPath).existsSync()) {
           try {
-            final uploadUri = Uri.parse('$targetBaseUrl/api/inspections/${Uri.encodeComponent(report.licenseNumber)}/upload');
-            final uploadReq = http.MultipartRequest('POST', uploadUri);
-            uploadReq.files.add(await http.MultipartFile.fromPath('image', report.photoPath!));
-            final streamed = await uploadReq.send().timeout(const Duration(seconds: 8));
-            final uploadRes = await http.Response.fromStream(streamed);
-            if (uploadRes.statusCode == 200) {
-              debugPrint('📸 Queued photo uploaded successfully during sync for ${report.licenseNumber}');
-            }
-          } catch (pErr) {
-            debugPrint('⚠️ Note uploading photo during sync: $pErr');
+            final fileExt = photoPath.split('.').last;
+            final sanitizedLic = lic.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+            final storagePath = 'inspection_${sanitizedLic}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+            await supabase.storage.from('inspections').upload(
+              storagePath,
+              File(photoPath),
+              fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
+            );
+            debugPrint('📸 Queued photo uploaded to Supabase Storage during sync for $lic');
+          } catch (storageErr) {
+            debugPrint('Note on storage upload during sync: $storageErr');
           }
         }
 
-        // 2. Upload inspection report JSON payload
-        final uri = Uri.parse('$targetBaseUrl/api/inspections/sync');
-        final response = await http
-            .post(
-              uri,
-              headers: {'Content-Type': 'application/json'},
-              body: json.encode({
-                'license_number': report.licenseNumber,
-                'inspection_status': report.inspectionStatus,
-                'gps_coordinates': report.gpsCoordinates,
-                'photo_path': report.photoPath,
-                'seal_number': report.sealNumber,
-                'notes': report.notes,
-                'mpe_zero': report.mpeZero,
-                'mpe_half': report.mpeHalf,
-                'mpe_full': report.mpeFull,
-                'timestamp': report.createdAt,
-              }),
-            )
-            .timeout(const Duration(seconds: 6));
+        // Update Supabase traders_list row: set status to 'Pending_GATC'
+        await supabase.from('traders_list').update({
+          'status': 'Pending_GATC',
+          'latitude': lat,
+          'longitude': lng,
+        }).eq('license_number', lic);
 
-        if (response.statusCode == 200 || response.statusCode == 201) {
-          successfullySynced.add(report);
-          successCount++;
-          debugPrint('✅ Successfully synced offline report for ${report.licenseNumber}');
-        } else {
-          debugPrint('⚠️ Sync server response ${response.statusCode} for ${report.licenseNumber}');
-        }
+        successfullySyncedLicenses.add(lic);
+        successCount++;
+        debugPrint('✅ Successfully pushed offline approval to Supabase: $lic -> Pending_GATC');
       } catch (e) {
-        debugPrint('⚠️ Sync attempt failed for ${report.licenseNumber}: $e');
+        debugPrint('⚠️ Sync failed for $lic (will retry on next connection event): $e');
+        // If network is completely unreachable, break out to avoid busy looping
         break;
       }
     }
 
-    // Remove successfully synced reports from local queue
-    if (successfullySynced.isNotEmpty) {
-      _queuedReports.removeWhere((r) => successfullySynced.any((s) => s.queueId == r.queueId));
+    // Remove successfully pushed approvals from SharedPreferences
+    if (successfullySyncedLicenses.isNotEmpty) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final List<String> current = prefs.getStringList(_offlineApprovalsKey) ?? [];
+        current.removeWhere((item) {
+          try {
+            final dec = jsonDecode(item);
+            return successfullySyncedLicenses.contains(dec['license_number']);
+          } catch (_) {
+            return false;
+          }
+        });
+        await prefs.setStringList(_offlineApprovalsKey, current);
+        await loadOfflineApprovals();
+      } catch (e) {
+        debugPrint('Error clearing synced approvals from cache: $e');
+      }
+    }
+
+    // 2. Also attempt sync of any legacy OfflineInspectionReports if present
+    final targetBaseUrl = baseUrl ?? ApiService.defaultBaseUrl;
+    final List<OfflineInspectionReport> successfullySyncedReports = [];
+
+    for (final report in List<OfflineInspectionReport>.from(_queuedReports)) {
+      try {
+        await supabase.from('traders_list').update({
+          'status': 'Pending_GATC',
+        }).eq('license_number', report.licenseNumber);
+
+        successfullySyncedReports.add(report);
+        successCount++;
+      } catch (_) {
+        // Fallback to Express sync endpoint if Supabase direct fails
+        try {
+          final uri = Uri.parse('$targetBaseUrl/api/inspections/sync');
+          final response = await http.post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'license_number': report.licenseNumber,
+              'inspection_status': 'Pending_GATC',
+            }),
+          ).timeout(const Duration(seconds: 4));
+          if (response.statusCode == 200 || response.statusCode == 201) {
+            successfullySyncedReports.add(report);
+            successCount++;
+          }
+        } catch (_) {
+          break;
+        }
+      }
+    }
+
+    if (successfullySyncedReports.isNotEmpty) {
+      _queuedReports.removeWhere((r) => successfullySyncedReports.any((s) => s.queueId == r.queueId));
       await _saveStoredQueue();
     }
 
@@ -274,8 +401,8 @@ class OfflineSyncService extends ChangeNotifier {
 
     return SyncResult(
       syncedCount: successCount,
-      remainingCount: _queuedReports.length,
-      success: _queuedReports.isEmpty,
+      remainingCount: pendingCount,
+      success: pendingCount == 0,
     );
   }
 

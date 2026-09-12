@@ -512,17 +512,10 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
     if (supabase) {
       try {
         let listQuery = supabase.from('traders_list').select('*');
-
-        if (activeOfficerEmail || activeOfficerId) {
-          const conditions = [`district.eq.${district}`];
-          if (activeOfficerEmail) conditions.push(`lmo_id.eq.${activeOfficerEmail}`);
-          if (activeOfficerId) conditions.push(`lmo_id.eq.${activeOfficerId}`);
-          listQuery = listQuery.or(conditions.join(','));
-        } else {
-          listQuery = listQuery.eq('district', district);
+        if (district && district.toLowerCase() !== 'all') {
+          listQuery = listQuery.ilike('district', `%${district}%`);
         }
-
-        const { data: listData, error: listError } = await listQuery.order('created_at', { ascending: false });
+        const { data: listData, error: listError } = await listQuery.order('license_number', { ascending: false });
 
         if (!listError && listData && listData.length > 0) {
           loaded = listData as TraderRecord[];
@@ -705,19 +698,20 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'traders_list' },
-        (payload) => {
-          const row = (payload.new || payload.old) as TraderRecord;
-          if (!row) return;
-
-          if ((row.district || '').toLowerCase() === userDistrict.toLowerCase()) {
-            fetchDistrictData(userDistrict);
-          }
+        () => {
+          fetchDistrictData(userDistrict);
         }
       )
       .subscribe();
 
+    // Heartbeat poll every 4s to guarantee real-time updates without page refresh
+    const pollInterval = setInterval(() => {
+      fetchDistrictData(userDistrict);
+    }, 4000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
   }, [userDistrict]);
 
@@ -733,10 +727,10 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
         const s = (t.status || '').toLowerCase();
         const insp = (t.inspection_status || '').toLowerCase();
         return (
+          s === 'pending_lmo' ||
           s === 'pending_inspection' ||
           s === 'pending' ||
           s === 'submitted' ||
-          s === 'under_review' ||
           insp === 'pending'
         );
       }).length,
@@ -776,10 +770,10 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
         const s = (t.status || '').toLowerCase();
         const insp = (t.inspection_status || '').toLowerCase();
         return (
+          s === 'pending_lmo' ||
           s === 'pending_inspection' ||
           s === 'pending' ||
           s === 'submitted' ||
-          s === 'under_review' ||
           insp === 'pending'
         );
       });
@@ -868,7 +862,7 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
 
     const targetLicense = verifyingTrader.license_number;
     const sealCode = sealNumber.trim() || `LEAD-SEAL-${Math.floor(100000 + Math.random() * 900000)}`;
-    const updatedStatus = 'Verified';
+    const updatedStatus = 'Pending_GATC';
     const sig = `LMO-VERIF-${userDistrict.substring(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}-STAMP`;
 
     setTraders((prev) =>
@@ -895,17 +889,10 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
           .from('traders_list')
           .update({
             status: updatedStatus,
-            checklist_confirmed: true,
-            lmo_id: officerEmail || `${officerName}@gov.in`,
-            digital_signature: sig,
-            signed_at: new Date().toISOString(),
-            seal_number: sealCode,
-            verification_notes: verificationNotes,
-            updated_at: new Date().toISOString(),
           })
           .eq('license_number', targetLicense);
       }
-      showToast(`Scale physically verified & lead wire seal ${sealCode} stamped! Record marked as Verified.`);
+      showToast(`Scale physically verified & stamped! Forwarded to GATC laboratory (Pending_GATC).`);
     } catch {
       showToast(`Scale verified locally for license ${targetLicense}`);
     }

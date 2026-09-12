@@ -133,7 +133,7 @@ export function ApplicationTracker() {
         query = query.eq('trader_email', userEmail);
       }
 
-      const { data, error } = await query.order('created_at', { ascending: false });
+      const { data, error } = await query.order('license_number', { ascending: false });
 
       if (data && data.length > 0 && !error) {
         setTraders(data as TraderRecord[]);

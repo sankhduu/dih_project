@@ -35,7 +35,7 @@ const DEFAULT_TRADER_SHOP: TraderRecord = {
   trader_email: 'trader@demo.com',
   license_number: 'HR-LMO-ROH-2026-089',
   district: 'Rohtak',
-  status: 'Pending_Inspection',
+  status: 'Pending_LMO',
   address: 'Shop No. 5, Main Market, Model Town, Rohtak - 124001',
   instrument_type: 'Electronic Counter Scale (Class III)',
   capacity: '30 kg (e = 5 g)',
@@ -134,7 +134,7 @@ export default function TraderDashboardPage() {
           query = query.eq('trader_email', effectiveEmail);
         }
         const { data, error } = await query
-          .order('created_at', { ascending: false })
+          .order('license_number', { ascending: false })
           .limit(1)
           .maybeSingle();
 
@@ -149,6 +149,10 @@ export default function TraderDashboardPage() {
     }
 
     fetchTraderRecord();
+
+    // Heartbeat polling every 4 seconds to guarantee UI updates without refresh
+    const pollTimer = setInterval(fetchTraderRecord, 4000);
+    return () => clearInterval(pollTimer);
   }, [sessionEmail, currentUser.email]);
 
   // 3. Supabase Realtime Listener (Listening to LMO and GATC actions, and new Applications)
@@ -173,7 +177,9 @@ export default function TraderDashboardPage() {
               return { ...updatedRow };
             }
             if (!prev.id || prev.id === updatedRow.id || prev.license_number === updatedRow.license_number) {
-              if (prev.status !== 'Approved' && updatedRow.status === 'Approved') {
+              const wasNotVerified = (prev.status || '').toLowerCase() !== 'verified';
+              const isNowVerified = (updatedRow.status || '').toLowerCase() === 'verified';
+              if (wasNotVerified && isNowVerified) {
                 setJustApproved(true);
                 setTimeout(() => setJustApproved(false), 8000);
               }
@@ -407,13 +413,13 @@ export default function TraderDashboardPage() {
   const displayEmail = sessionEmail || currentUser.email || 'trader@demo.com';
   const displayName = currentUser.fullName || traderShop?.owner_name || 'Mohan Lal (Proprietor)';
 
-  const rawStatus = (traderShop?.status || 'Pending_Inspection').toLowerCase();
-  const isVerified = (traderShop?.status || '').trim().toLowerCase() === 'verified' || rawStatus === 'verified';
-  const isApproved = rawStatus === 'approved';
-  const isRejected = rawStatus === 'rejected';
-  const isPendingGatc = rawStatus === 'pending_gatc';
-  const isUnderReview = rawStatus === 'under_review' || isPendingGatc;
-  const isPendingInspection = rawStatus === 'pending_inspection' || rawStatus === 'pending';
+  const rawStatus = (traderShop?.status || 'Pending_LMO').trim();
+  const isVerified = rawStatus.toLowerCase() === 'verified';
+  const isPendingGatc = rawStatus.toLowerCase() === 'pending_gatc';
+  const isPendingLmo = rawStatus.toLowerCase() === 'pending_lmo' || rawStatus.toLowerCase() === 'pending_inspection' || rawStatus.toLowerCase() === 'pending';
+  const isUnderReview = isPendingGatc;
+  const isApproved = isVerified || rawStatus.toLowerCase() === 'approved';
+  const isRejected = rawStatus.toLowerCase() === 'rejected';
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-900">
@@ -433,7 +439,7 @@ export default function TraderDashboardPage() {
                   <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping"></span>
                 </h4>
                 <p className="text-xs text-emerald-100 mt-0.5">
-                  Your scale for <strong>{traderShop.shop_name}</strong> is now {traderShop.status}. Download your verified certificate now.
+                  Your scale for <strong>{traderShop.shop_name}</strong> is now Verified. Download your verified certificate now.
                 </p>
               </div>
             </div>
@@ -447,7 +453,7 @@ export default function TraderDashboardPage() {
         )}
 
         {/* ========================================================================= */}
-        {/* WHEN VERIFIED: GREEN BANNER WITH 'DOWNLOAD CERTIFICATE' BUTTON */}
+        {/* WHEN VERIFIED: GREEN BANNER WITH 'DOWNLOAD CERTIFICATE' BUTTON (ONLY WHEN VERIFIED) */}
         {/* ========================================================================= */}
         {isVerified && (
           <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-emerald-500 animate-in fade-in duration-300">
@@ -475,40 +481,6 @@ export default function TraderDashboardPage() {
               className="px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-[#002B49] font-black text-xs sm:text-sm shadow-md hover:shadow-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-2"
             >
               <FileBadge className="w-4 h-4 text-[#002B49]" />
-              <span>Download Certificate</span>
-            </button>
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* WHEN APPROVED: GREEN BANNER WITH DOWNLOAD CERTIFICATE BUTTON */}
-        {/* ========================================================================= */}
-        {isApproved && !isVerified && (
-          <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-emerald-500 animate-in fade-in duration-300">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-white/20 text-white flex items-center justify-center shrink-0 shadow-xs">
-                <CheckCircle2 className="w-7 h-7 text-amber-300" />
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/50 text-emerald-100 border border-emerald-400/40">
-                    Statutory Approval Complete
-                  </span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
-                </div>
-                <h3 className="text-base sm:text-lg font-black text-white">
-                  Verification Approved &amp; Digitally Signed by GATC
-                </h3>
-                <p className="text-xs text-emerald-100">
-                  Official Schedule IX Form V certificate is issued with embedded QR code.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleDownloadCertificate}
-              className="px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-[#002B49] font-black text-xs sm:text-sm shadow-md hover:shadow-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-2"
-            >
-              <FileBadge className="w-4 h-4" />
               <span>Download Certificate</span>
             </button>
           </div>
@@ -626,22 +598,16 @@ export default function TraderDashboardPage() {
                   <span>Verified</span>
                 </span>
               )}
-              {isApproved && !isVerified && (
-                <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 ring-2 ring-emerald-400/20 shadow-2xs">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Approved</span>
-                </span>
-              )}
-              {isUnderReview && !isVerified && (
+              {isPendingGatc && !isVerified && (
                 <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-300 ring-2 ring-blue-400/20 shadow-2xs">
                   <Clock className="w-4 h-4 text-blue-600 animate-spin" />
-                  <span>Under Review (LMO Submitted)</span>
+                  <span>Pending GATC (LMO Approved)</span>
                 </span>
               )}
-              {isPendingInspection && !isVerified && (
+              {isPendingLmo && !isVerified && !isPendingGatc && (
                 <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-300 shadow-2xs">
                   <Clock className="w-4 h-4 text-amber-600" />
-                  <span>Pending Inspection</span>
+                  <span>Pending LMO Inspection</span>
                 </span>
               )}
               {isRejected && (
@@ -659,16 +625,6 @@ export default function TraderDashboardPage() {
                 >
                   <FileBadge className="w-4 h-4 text-[#002B49]" />
                   <span>Download Certificate</span>
-                </button>
-              )}
-
-              {isApproved && !isVerified && (
-                <button
-                  onClick={() => setIsCertificateOpen(true)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-[#002B49] hover:bg-[#003B66] text-white font-black text-xs shadow-md hover:shadow-lg transition-all cursor-pointer"
-                >
-                  <QrCode className="w-4 h-4 text-amber-400" />
-                  <span>View Verified QR Certificate</span>
                 </button>
               )}
             </div>
@@ -829,18 +785,10 @@ export default function TraderDashboardPage() {
                       <FileBadge className="w-3.5 h-3.5" />
                       <span>Download Certificate</span>
                     </button>
-                  ) : isApproved ? (
-                    <button
-                      onClick={() => setIsCertificateOpen(true)}
-                      className="text-emerald-800 bg-amber-300 hover:bg-amber-400 px-2.5 py-1 rounded-md inline-flex items-center gap-1 font-bold cursor-pointer"
-                    >
-                      <QrCode className="w-3 h-3" />
-                      <span>Download QR</span>
-                    </button>
                   ) : isRejected ? (
                     <span className="text-rose-700">Rectification Needed</span>
                   ) : (
-                    <span className="text-slate-400">Locked</span>
+                    <span className="text-slate-400">Locked (Pending Verification)</span>
                   )}
                 </div>
               </div>

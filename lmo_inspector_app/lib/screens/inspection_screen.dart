@@ -1,10 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import '../services/offline_sync_service.dart';
 
 class InspectionScreen extends StatefulWidget {
   final String traderName;
@@ -283,52 +283,10 @@ class _InspectionScreenState extends State<InspectionScreen> {
     final licenseNumber = widget.licenseNumber.isNotEmpty
         ? widget.licenseNumber
         : (widget.trader?['license_number'] ?? widget.trader?['id'] ?? 'LMO-2026').toString();
-    final traderId = (widget.trader?['id'] ?? licenseNumber).toString();
     final shopName = widget.traderName.isNotEmpty
         ? widget.traderName
         : (widget.trader?['shop_name'] ?? widget.trader?['trader_name'] ?? 'Commercial Shop').toString();
-    final String lmoId = widget.officerEmail ?? 'officer.lmo@haryana.gov.in';
     final String photoPath = _capturedImagePath ?? 'camera_live_proof_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-    // Local offline saver helper
-    Future<void> saveLocallyOffline({
-      required double lat,
-      required double lng,
-      required String savedPhotoUrl,
-    }) async {
-      try {
-        final SharedPreferences prefs = await SharedPreferences.getInstance();
-        final List<String> offlineQueue = prefs.getStringList('offline_pending_approvals') ?? [];
-
-        final Map<String, dynamic> approvalRecord = {
-          'id': traderId,
-          'license_number': licenseNumber,
-          'shop_name': shopName,
-          'status': 'Pending_GATC',
-          'latitude': lat,
-          'longitude': lng,
-          'photo_path': savedPhotoUrl,
-          'timestamp': DateTime.now().toIso8601String(),
-          'checklist_confirmed': true,
-          'lmo_id': lmoId,
-        };
-
-        offlineQueue.removeWhere((item) {
-          try {
-            final decoded = jsonDecode(item);
-            return decoded['id'] == traderId || decoded['license_number'] == licenseNumber;
-          } catch (_) {
-            return false;
-          }
-        });
-
-        offlineQueue.add(jsonEncode(approvalRecord));
-        await prefs.setStringList('offline_pending_approvals', offlineQueue);
-        debugPrint('📦 Stored locally in offline queue. Total queued: ${offlineQueue.length}');
-      } catch (e) {
-        debugPrint('Offline local storage error: $e');
-      }
-    }
 
     double lat = 28.8955;
     double lng = 76.6066;
@@ -340,66 +298,97 @@ class _InspectionScreenState extends State<InspectionScreen> {
       lat = _liveLatitude ?? 28.8955;
       lng = _liveLongitude ?? 76.6066;
 
-      // 3. Upload Live Photo to Supabase Storage bucket ('inspections')
-      final supabase = Supabase.instance.client;
-      String uploadedPhotoUrl = photoPath;
-
-      if (_capturedImageFile != null && _capturedImageFile!.existsSync()) {
-        try {
-          final fileExt = _capturedImageFile!.path.split('.').last;
-          final sanitizedLic = licenseNumber.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
-          final storagePath = 'inspection_${sanitizedLic}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-
-          await supabase.storage.from('inspections').upload(
-            storagePath,
-            _capturedImageFile!,
-            fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
-          );
-          uploadedPhotoUrl = supabase.storage.from('inspections').getPublicUrl(storagePath);
-          debugPrint('✅ Photo uploaded to Supabase Storage: $uploadedPhotoUrl');
-        } catch (storageErr) {
-          debugPrint('Supabase Storage notice (falling back to photo path): $storageErr');
-          // Fallback to local photo path or base64 without breaking database update
+      // Check network connectivity
+      bool hasConnectivity = false;
+      try {
+        final connectivityResult = await Connectivity().checkConnectivity();
+        if (connectivityResult.any((r) => r != ConnectivityResult.none)) {
+          hasConnectivity = true;
         }
+      } catch (_) {
+        hasConnectivity = OfflineSyncService().isOnline;
       }
 
-      // 4. Update traders_list row: set status to 'Pending_GATC' targeting license_number
-      await supabase.from('traders_list').update({
-        'status': 'Pending_GATC',
-        'latitude': lat,
-        'longitude': lng,
-        'updated_at': DateTime.now().toIso8601String(),
-        'photo_url': uploadedPhotoUrl,
-        'checklist_confirmed': true,
-        'lmo_id': lmoId,
-      }).eq('license_number', widget.licenseNumber);
+      if (!hasConnectivity) {
+        // Offline: save locally to SharedPreferences offline queue
+        debugPrint('🌐 Offline mode: saving approval locally for $licenseNumber');
+        await OfflineSyncService().saveOfflineApproval(
+          licenseNumber: licenseNumber,
+          traderName: shopName,
+          latitude: lat,
+          longitude: lng,
+          photoPath: _capturedImageFile?.path ?? photoPath,
+        );
+        syncedOnline = false;
+      } else {
+        // Online: attempt photo upload and update Supabase traders_list
+        final supabase = Supabase.instance.client;
 
-      syncedOnline = true;
-      debugPrint('✅ Online sync to Supabase traders_list succeeded for license: ${widget.licenseNumber} (Pending_GATC)');
+        if (_capturedImageFile != null && _capturedImageFile!.existsSync()) {
+          try {
+            final fileExt = _capturedImageFile!.path.split('.').last;
+            final sanitizedLic = licenseNumber.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+            final storagePath = 'inspection_${sanitizedLic}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+
+            await supabase.storage.from('inspections').upload(
+              storagePath,
+              _capturedImageFile!,
+              fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
+            );
+            debugPrint('✅ Photo uploaded to Supabase Storage: $storagePath');
+          } catch (storageErr) {
+            debugPrint('Supabase Storage notice (safe fallback): $storageErr');
+          }
+        }
+
+        // Update Supabase traders_list row: status -> 'Pending_GATC'
+        await supabase.from('traders_list').update({
+          'status': 'Pending_GATC',
+          'latitude': lat,
+          'longitude': lng,
+        }).eq('license_number', licenseNumber);
+
+        syncedOnline = true;
+        debugPrint('✅ Online sync to Supabase succeeded: $licenseNumber -> Pending_GATC');
+      }
 
       dismissBlockingDialog();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Row(
               children: [
-                Icon(Icons.send_rounded, color: Colors.white, size: 18),
-                SizedBox(width: 8),
+                Icon(
+                  syncedOnline ? Icons.send_rounded : Icons.wifi_off,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Text('Inspection verified! Forwarded to GATC laboratory for digital signing.'),
+                  child: Text(
+                    syncedOnline
+                        ? 'Inspection verified! Forwarded to GATC laboratory for digital signing.'
+                        : 'Saved offline. Will sync automatically when back online.',
+                  ),
                 ),
               ],
             ),
-            backgroundColor: emeraldGreen,
-            duration: Duration(seconds: 4),
+            backgroundColor: syncedOnline ? emeraldGreen : accentGold,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
     } on SocketException catch (socketErr) {
-      // Catch network failure edge case
       debugPrint('Network SocketException caught: $socketErr');
-      await saveLocallyOffline(lat: lat, lng: lng, savedPhotoUrl: photoPath);
+      await OfflineSyncService().saveOfflineApproval(
+        licenseNumber: licenseNumber,
+        traderName: shopName,
+        latitude: lat,
+        longitude: lng,
+        photoPath: _capturedImageFile?.path ?? photoPath,
+      );
+      syncedOnline = false;
       dismissBlockingDialog();
 
       if (mounted) {
@@ -410,7 +399,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
                 Icon(Icons.wifi_off, color: Colors.white, size: 20),
                 SizedBox(width: 8),
                 Expanded(
-                  child: Text('Saved offline. Will sync automatically.'),
+                  child: Text('Saved offline. Will sync automatically when back online.'),
                 ),
               ],
             ),
@@ -421,7 +410,14 @@ class _InspectionScreenState extends State<InspectionScreen> {
       }
     } catch (generalErr) {
       debugPrint('Submission error / offline fallback: $generalErr');
-      await saveLocallyOffline(lat: lat, lng: lng, savedPhotoUrl: photoPath);
+      await OfflineSyncService().saveOfflineApproval(
+        licenseNumber: licenseNumber,
+        traderName: shopName,
+        latitude: lat,
+        longitude: lng,
+        photoPath: _capturedImageFile?.path ?? photoPath,
+      );
+      syncedOnline = false;
       dismissBlockingDialog();
 
       if (mounted) {
@@ -432,7 +428,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
                 Icon(Icons.wifi_off, color: Colors.white, size: 20),
                 SizedBox(width: 8),
                 Expanded(
-                  child: Text('Saved offline. Will sync automatically.'),
+                  child: Text('Saved offline. Will sync automatically when back online.'),
                 ),
               ],
             ),
@@ -463,16 +459,20 @@ class _InspectionScreenState extends State<InspectionScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: emeraldGreen.withValues(alpha: 0.15),
+                color: (syncedOnline ? emeraldGreen : accentGold).withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.verified_rounded, color: emeraldGreen, size: 28),
+              child: Icon(
+                syncedOnline ? Icons.verified_rounded : Icons.save_rounded,
+                color: syncedOnline ? emeraldGreen : accentGold,
+                size: 28,
+              ),
             ),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Text(
-                'Forwarded to GATC',
-                style: TextStyle(
+                syncedOnline ? 'Forwarded to GATC' : 'Saved Offline (Pending Sync)',
+                style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
                   color: primaryNavy,
@@ -485,9 +485,11 @@ class _InspectionScreenState extends State<InspectionScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Statutory physical inspection has been recorded and forwarded to the Central GATC Laboratory for digital signature.',
-              style: TextStyle(fontSize: 13, color: Colors.black87),
+            Text(
+              syncedOnline
+                  ? 'Statutory physical inspection has been recorded and forwarded to the Central GATC Laboratory for digital signature.'
+                  : 'Inspection recorded and stored securely on your device. It will automatically synchronize to GATC once network connectivity is restored, or you can tap "Sync Now" on the dashboard.',
+              style: const TextStyle(fontSize: 13, color: Colors.black87),
             ),
             const SizedBox(height: 12),
             Container(
@@ -510,12 +512,16 @@ class _InspectionScreenState extends State<InspectionScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: emeraldGreen.withValues(alpha: 0.15),
+                          color: (syncedOnline ? emeraldGreen : accentGold).withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Text(
-                          'Pending_GATC',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: emeraldGreen),
+                        child: Text(
+                          syncedOnline ? 'Pending_GATC' : 'Saved Offline',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: syncedOnline ? emeraldGreen : accentGold,
+                          ),
                         ),
                       ),
                     ],
