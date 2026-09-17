@@ -22,6 +22,9 @@ import {
   FileSpreadsheet,
   LogOut,
   ArrowLeft,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -32,9 +35,14 @@ interface HeaderProps {
 interface HeaderTraderRecord {
   id?: string | number;
   trader_name: string;
+  shop_name?: string;
+  owner_name?: string;
   license_number: string;
   instrument_type?: string;
+  district?: string;
+  status?: string;
   inspection_status?: string;
+  assigned_officer?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -47,6 +55,25 @@ interface ExpiringTraderAlert {
   daysRemaining: number;
   issueDate: string;
   expiryDate: string;
+}
+
+interface PendingLmoAlert {
+  id: string | number;
+  traderName: string;
+  licenseNumber: string;
+  instrumentType: string;
+  district: string;
+  appliedDate: string;
+}
+
+interface LmoApprovedAlert {
+  id: string | number;
+  traderName: string;
+  licenseNumber: string;
+  instrumentType: string;
+  district: string;
+  approvedDate: string;
+  officerName: string;
 }
 
 export function Header({ activeTab, setActiveTab }: HeaderProps) {
@@ -66,62 +93,166 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
   const [expiringTraders, setExpiringTraders] = useState<ExpiringTraderAlert[]>([]);
+  const [pendingLmoRequests, setPendingLmoRequests] = useState<PendingLmoAlert[]>([]);
+  const [lmoApprovedApplications, setLmoApprovedApplications] = useState<LmoApprovedAlert[]>([]);
 
   useEffect(() => {
     setMounted(true);
 
-    async function fetchExpiringTraders() {
+    async function fetchNotificationsData() {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/traders`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && Array.isArray(json.data)) {
-            const now = new Date();
-            const alerts: ExpiringTraderAlert[] = [];
+        let records: HeaderTraderRecord[] = [];
 
-            json.data.forEach((trader: HeaderTraderRecord, index: number) => {
-              if ((trader.inspection_status || '').toLowerCase() === 'passed') {
-                // Calculate issue date & 1-year statutory validity
-                const rawDate = trader.created_at || trader.updated_at;
-                let issueDate: Date;
-                if (rawDate) {
-                  issueDate = new Date(rawDate);
-                } else {
-                  // Realistic staggered dates where some are > 11 months ago (within 30 days of 1-year expiry)
-                  const monthsAgo = 11 + (index % 3) * 0.4;
-                  issueDate = new Date(now.getTime() - monthsAgo * 30 * 24 * 60 * 60 * 1000);
-                }
-
-                // 12 months statutory validity
-                const expiryDate = new Date(issueDate.getTime() + 365 * 24 * 60 * 60 * 1000);
-                const diffMs = expiryDate.getTime() - now.getTime();
-                const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
-                // If issued > 11 months ago (expires in <= 30 days)
-                if (diffDays <= 30) {
-                  alerts.push({
-                    id: trader.id || trader.license_number || index,
-                    traderName: trader.trader_name,
-                    licenseNumber: trader.license_number,
-                    instrumentType: trader.instrument_type || 'Weighing Scale',
-                    daysRemaining: Math.max(1, diffDays),
-                    issueDate: issueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-                    expiryDate: expiryDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-                  });
-                }
-              }
-            });
-
-            // Limit to top 5 most urgent alerts for clean dropdown UI
-            setExpiringTraders(alerts.slice(0, 6));
+        // 1. First attempt: Direct Supabase query
+        if (supabase) {
+          try {
+            const { data, error } = await supabase
+              .from('traders')
+              .select('*')
+              .order('created_at', { ascending: false });
+            if (!error && Array.isArray(data) && data.length > 0) {
+              records = data as HeaderTraderRecord[];
+            }
+          } catch (sbErr) {
+            console.warn('Supabase fetch notice for Header notifications:', sbErr);
           }
         }
+
+        // 2. Second attempt: Fallback to Next.js API route
+        if (records.length === 0) {
+          const res = await fetch(`${API_BASE_URL}/api/traders`);
+          if (res.ok) {
+            const json = await res.json();
+            if (json.success && Array.isArray(json.data)) {
+              records = json.data as HeaderTraderRecord[];
+            }
+          }
+        }
+
+        if (records.length > 0) {
+          const now = new Date();
+          const expiring: ExpiringTraderAlert[] = [];
+          const pendingList: PendingLmoAlert[] = [];
+          const approvedList: LmoApprovedAlert[] = [];
+
+          records.forEach((trader, index) => {
+            const inspStatus = (trader.inspection_status || '').toLowerCase();
+            const rawStatus = (trader.status || '').toLowerCase();
+            const name = trader.trader_name || trader.shop_name || 'Commercial Shop';
+            const lic = trader.license_number || `TR-${index + 1}`;
+            const inst = trader.instrument_type || 'Weighing Instrument';
+            const dist = trader.district || 'Hisar';
+
+            // 1. Pending LMO Applications (applications awaiting LMO physical inspection)
+            if (
+              inspStatus === 'pending' ||
+              rawStatus === 'pending' ||
+              rawStatus === 'pending_lmo' ||
+              rawStatus === 'pending_inspection' ||
+              rawStatus === 'submitted'
+            ) {
+              const appliedAt = trader.created_at ? new Date(trader.created_at) : now;
+              pendingList.push({
+                id: trader.id || lic || index,
+                traderName: name,
+                licenseNumber: lic,
+                instrumentType: inst,
+                district: dist,
+                appliedDate: appliedAt.toLocaleDateString('en-GB', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                }),
+              });
+            }
+
+            // 2. LMO Approved Applications (physically inspected & approved by LMO, ready for GATC lab certification)
+            if (
+              inspStatus === 'passed' ||
+              rawStatus === 'verified' ||
+              rawStatus === 'pending_gatc' ||
+              rawStatus === 'approved'
+            ) {
+              const approvedAt = trader.updated_at || trader.created_at
+                ? new Date(trader.updated_at || trader.created_at!)
+                : now;
+
+              approvedList.push({
+                id: trader.id || lic || index,
+                traderName: name,
+                licenseNumber: lic,
+                instrumentType: inst,
+                district: dist,
+                approvedDate: approvedAt.toLocaleDateString('en-GB', {
+                  day: '2-digit',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+                officerName: trader.assigned_officer || 'LMO Inspector',
+              });
+
+              // 3. Expiration / Renewal Alerts (< 30 days)
+              const rawDate = trader.created_at || trader.updated_at;
+              let issueDate: Date;
+              if (rawDate) {
+                issueDate = new Date(rawDate);
+              } else {
+                const monthsAgo = 11 + (index % 3) * 0.4;
+                issueDate = new Date(now.getTime() - monthsAgo * 30 * 24 * 60 * 60 * 1000);
+              }
+              const expiryDate = new Date(issueDate.getTime() + 365 * 24 * 60 * 60 * 1000);
+              const diffMs = expiryDate.getTime() - now.getTime();
+              const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+              if (diffDays <= 30) {
+                expiring.push({
+                  id: trader.id || lic || index,
+                  traderName: name,
+                  licenseNumber: lic,
+                  instrumentType: inst,
+                  daysRemaining: Math.max(1, diffDays),
+                  issueDate: issueDate.toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                  }),
+                  expiryDate: expiryDate.toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                  }),
+                });
+              }
+            }
+          });
+
+          setPendingLmoRequests(pendingList.slice(0, 10));
+          setExpiringTraders(expiring.slice(0, 10));
+          setLmoApprovedApplications(approvedList.slice(0, 10));
+        }
       } catch (e) {
-        console.warn('Notice fetching expiring traders for Header bell:', e);
+        console.warn('Notice fetching notifications for Header:', e);
       }
     }
 
-    fetchExpiringTraders();
+    fetchNotificationsData();
+
+    // Global Supabase Realtime Subscription for instant live alerts
+    const channel = supabase
+      .channel('header-live-alerts')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'traders' },
+        () => {
+          fetchNotificationsData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const roleLabels: Record<UserRole, { label: string; icon: React.ElementType }> = {
@@ -138,7 +269,11 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
   const isLmoRoute = pathname.startsWith('/lmo');
   const isGatcRoute = pathname.startsWith('/gatc');
   const isDocaRoute = pathname.startsWith('/doca') || pathname.startsWith('/admin');
-  const isTraderRoute = pathname.startsWith('/trader');
+  const isTraderRoute =
+    pathname.startsWith('/trader') ||
+    pathname.startsWith('/apply') ||
+    pathname.startsWith('/tracker') ||
+    pathname.startsWith('/notices');
 
   const effectiveRole: UserRole = isLmoRoute
     ? 'LMO'
@@ -149,6 +284,23 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
     : isTraderRoute
     ? 'APPLICANT'
     : currentUser.role;
+
+  const isLmoUser = effectiveRole === 'LMO' || isLmoRoute;
+  const isGatcUser = effectiveRole === 'GATC' || isGatcRoute;
+  const isAdminUser = effectiveRole === 'ADMIN' || isDocaRoute;
+  const isTraderUser = effectiveRole === 'APPLICANT' || isTraderRoute;
+
+  // Notification button is strictly hidden on Traders dashboard / Trader routes.
+  // It is shown on LMO Officers dashboard, GATC dashboard, and Admin portal.
+  const shouldShowNotificationBell = mounted && !isTraderUser && (isLmoUser || isGatcUser || isAdminUser);
+
+  const notificationCount = isGatcUser
+    ? lmoApprovedApplications.length
+    : isLmoUser
+    ? pendingLmoRequests.length + expiringTraders.length
+    : isAdminUser
+    ? pendingLmoRequests.length + lmoApprovedApplications.length + expiringTraders.length
+    : 0;
 
   // Resolve user profile corresponding to the effective role
   const lmoUser = availableUsers.find((u) => u.role === 'LMO') || MOCK_USERS[1];
@@ -269,112 +421,316 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
               </div>
             )}
 
-            {/* Notifications / Alerts Bell with Red Badge & Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setShowAlerts(!showAlerts)}
-                className="p-2 rounded-xl text-slate-600 hover:text-[#002B49] hover:bg-slate-100 relative transition-all cursor-pointer"
-                title="Statutory Verification Renewal Alerts"
-              >
-                <Bell className="w-4 h-4" />
-                {mounted && expiringTraders.length > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose-600 text-white text-[10px] font-black rounded-full flex items-center justify-center ring-2 ring-white shadow-xs animate-pulse">
-                    {expiringTraders.length}
-                  </span>
-                )}
-              </button>
-
-              {showAlerts && (
-                <div className="absolute right-0 mt-2 w-84 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-50 animate-in fade-in zoom-in-95">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center">
-                        <Bell className="w-3.5 h-3.5" />
-                      </div>
-                      <span className="text-xs font-extrabold text-slate-900">Renewal Alerts (&lt; 30 Days)</span>
-                    </div>
-                    <span className="text-[10px] font-bold bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full border border-rose-200">
-                      {expiringTraders.length} Action Needed
+            {/* Role-Specific Notifications / Alerts Bell (Strictly Hidden on Trader Dashboard; Shown on LMO & GATC Dashboards) */}
+            {shouldShowNotificationBell && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowAlerts(!showAlerts)}
+                  className="p-2 rounded-xl text-slate-600 hover:text-[#002B49] hover:bg-slate-100 relative transition-all cursor-pointer"
+                  title={
+                    isGatcUser
+                      ? 'LMO Approved Applications (Awaiting GATC Certification)'
+                      : isLmoUser
+                      ? 'LMO Inspection Queue & Renewal Alerts'
+                      : 'System Alerts & Notifications'
+                  }
+                >
+                  <Bell className="w-4 h-4" />
+                  {mounted && notificationCount > 0 && (
+                    <span
+                      className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 text-white text-[10px] font-black rounded-full flex items-center justify-center ring-2 ring-white shadow-xs animate-pulse ${
+                        isGatcUser
+                          ? 'bg-emerald-600'
+                          : isLmoUser
+                          ? 'bg-rose-600'
+                          : 'bg-amber-600'
+                      }`}
+                    >
+                      {notificationCount}
                     </span>
-                  </div>
+                  )}
+                </button>
 
-                  <div className="mt-3 space-y-2 max-h-72 overflow-y-auto pr-1">
-                    {expiringTraders.length > 0 ? (
-                      expiringTraders.map((item) => (
-                        <div
-                          key={item.id}
-                          className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/90 text-xs space-y-1 hover:bg-amber-50 transition-colors"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="font-extrabold text-slate-900 line-clamp-1">{item.traderName}</span>
-                            <span className="shrink-0 text-[10px] font-bold text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded-md">
-                              Due in {item.daysRemaining}d
-                            </span>
+                {showAlerts && (
+                  <div className="absolute right-0 mt-2 w-84 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-50 animate-in fade-in zoom-in-95">
+                    {/* GATC Laboratory Notification Dropdown */}
+                    {isGatcUser && (
+                      <div>
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                              <CheckCircle2 className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-black text-slate-900">LMO Approved Applications</h4>
+                              <p className="text-[10px] text-emerald-700 font-medium">Ready for GATC Lab Certification</p>
+                            </div>
                           </div>
+                          <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
+                            {lmoApprovedApplications.length} Verified
+                          </span>
+                        </div>
 
-                          <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium">
-                            <span className="font-mono text-slate-700">{item.licenseNumber}</span>
-                            <span className="text-[10px] text-slate-500">{item.instrumentType}</span>
-                          </div>
+                        <p className="text-[11px] text-slate-500 mt-2 mb-2 leading-tight">
+                          Weighing and measuring instruments physically inspected and stamped by LMO officers, awaiting GATC secondary calibration &amp; digital signing:
+                        </p>
 
-                          <div className="text-[10px] text-amber-800 pt-0.5 flex items-center justify-between border-t border-amber-200/60 mt-1">
-                            <span>Valid Until: <strong>{item.expiryDate}</strong></span>
-                            {currentUser.role === 'APPLICANT' ? (
-                              <Link
-                                href="/apply"
-                                onClick={() => setShowAlerts(false)}
-                                className="text-emerald-800 font-bold hover:underline"
+                        <div className="mt-2 space-y-2 max-h-72 overflow-y-auto pr-1">
+                          {lmoApprovedApplications.length > 0 ? (
+                            lmoApprovedApplications.map((item) => (
+                              <div
+                                key={`gatc-alert-${item.id}`}
+                                className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/80 text-xs space-y-1.5 hover:bg-emerald-50 transition-colors"
                               >
-                                Re-verify Scale →
-                              </Link>
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="font-extrabold text-slate-900 line-clamp-1">{item.traderName}</span>
+                                  <span className="shrink-0 text-[10px] font-bold text-emerald-900 bg-emerald-200/80 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                                    LMO Approved
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium">
+                                  <span className="font-mono text-slate-700 font-bold">{item.licenseNumber}</span>
+                                  <span className="text-[10px] text-slate-500 truncate max-w-[140px]">{item.instrumentType}</span>
+                                </div>
+
+                                <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                                  <span>District: <strong>{item.district}</strong></span>
+                                  <span>Officer: <strong>{item.officerName}</strong></span>
+                                </div>
+
+                                <div className="text-[10px] text-emerald-800 pt-1 flex items-center justify-between border-t border-emerald-200/60">
+                                  <span>Verified: {item.approvedDate}</span>
+                                  <Link
+                                    href="/gatc/dashboard"
+                                    onClick={() => setShowAlerts(false)}
+                                    className="text-emerald-900 font-black hover:underline flex items-center gap-1 bg-emerald-200/60 px-2 py-0.5 rounded-md hover:bg-emerald-200"
+                                  >
+                                    <span>Review &amp; Certify</span>
+                                    <span>→</span>
+                                  </Link>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-center py-6 text-slate-500 text-xs space-y-1">
+                              <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto opacity-60" />
+                              <p className="font-semibold text-slate-700">All Applications Certified</p>
+                              <p className="text-[11px] text-slate-400">No pending LMO approved instruments awaiting GATC calibration.</p>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                          <Link
+                            href="/gatc/dashboard"
+                            onClick={() => setShowAlerts(false)}
+                            className="text-xs font-bold text-[#002B49] hover:underline"
+                          >
+                            Open GATC Certification Queue →
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => setShowAlerts(false)}
+                            className="text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
+                          >
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* LMO Officer Notification Dropdown */}
+                    {isLmoUser && (
+                      <div>
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
+                              <Bell className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-black text-slate-900">LMO Officer Notifications</h4>
+                              <p className="text-[10px] text-slate-500 font-medium">Field Queue &amp; Renewal Alerts</p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
+                            {notificationCount} Action{notificationCount !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 space-y-3 max-h-80 overflow-y-auto pr-1">
+                          {/* Section 1: Pending Inspection Requests */}
+                          <div>
+                            <div className="flex items-center justify-between text-[11px] font-extrabold text-slate-700 mb-1.5 px-1">
+                              <span className="flex items-center gap-1.5">
+                                <Clock className="w-3 h-3 text-blue-600" />
+                                Pending Inspections
+                              </span>
+                              <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded font-bold">
+                                {pendingLmoRequests.length}
+                              </span>
+                            </div>
+
+                            {pendingLmoRequests.length > 0 ? (
+                              <div className="space-y-1.5">
+                                {pendingLmoRequests.map((item) => (
+                                  <div
+                                    key={`req-${item.id}`}
+                                    className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200/80 text-xs space-y-1 hover:bg-blue-50 transition-colors"
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <span className="font-extrabold text-slate-900 line-clamp-1">{item.traderName}</span>
+                                      <span className="shrink-0 text-[9px] font-bold text-blue-800 bg-blue-200/70 px-1.5 py-0.5 rounded">
+                                        {item.district}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[10px] text-slate-600">
+                                      <span className="font-mono text-slate-700">{item.licenseNumber}</span>
+                                      <span className="truncate max-w-[130px]">{item.instrumentType}</span>
+                                    </div>
+                                    <div className="pt-1 flex items-center justify-between border-t border-blue-200/50 text-[10px]">
+                                      <span className="text-slate-400">Applied: {item.appliedDate}</span>
+                                      <Link
+                                        href="/lmo?tab=inspection_queue"
+                                        onClick={() => setShowAlerts(false)}
+                                        className="text-blue-700 font-bold hover:underline flex items-center gap-1"
+                                      >
+                                        <span>Inspect Scale</span>
+                                        <span>→</span>
+                                      </Link>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             ) : (
-                              <Link
-                                href="/lmo"
-                                onClick={() => setShowAlerts(false)}
-                                className="text-indigo-900 font-bold hover:underline"
-                              >
-                                Schedule Re-test →
-                              </Link>
+                              <p className="text-[11px] text-slate-400 italic px-1 py-1">No pending inspection requests in queue.</p>
+                            )}
+                          </div>
+
+                          {/* Section 2: Statutory Expiration Alerts */}
+                          <div>
+                            <div className="flex items-center justify-between text-[11px] font-extrabold text-slate-700 mb-1.5 px-1 pt-1 border-t border-slate-100">
+                              <span className="flex items-center gap-1.5">
+                                <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                Renewal Alerts (&lt; 30 Days)
+                              </span>
+                              <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-bold">
+                                {expiringTraders.length}
+                              </span>
+                            </div>
+
+                            {expiringTraders.length > 0 ? (
+                              <div className="space-y-1.5">
+                                {expiringTraders.map((item) => (
+                                  <div
+                                    key={`exp-${item.id}`}
+                                    className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-xs space-y-1 hover:bg-amber-50 transition-colors"
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <span className="font-extrabold text-slate-900 line-clamp-1">{item.traderName}</span>
+                                      <span className="shrink-0 text-[9px] font-bold text-amber-900 bg-amber-200/80 px-1.5 py-0.5 rounded">
+                                        Due in {item.daysRemaining}d
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[10px] text-slate-600">
+                                      <span className="font-mono text-slate-700">{item.licenseNumber}</span>
+                                      <span>Expires: {item.expiryDate}</span>
+                                    </div>
+                                    <div className="pt-1 flex items-center justify-end border-t border-amber-200/50 text-[10px]">
+                                      <Link
+                                        href="/lmo?tab=visit_schedule"
+                                        onClick={() => setShowAlerts(false)}
+                                        className="text-amber-900 font-bold hover:underline flex items-center gap-1"
+                                      >
+                                        <span>Schedule Re-test</span>
+                                        <span>→</span>
+                                      </Link>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-slate-400 italic px-1 py-1">No certificates expiring within 30 days.</p>
                             )}
                           </div>
                         </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-6 text-slate-500 text-xs space-y-1">
-                        <p className="font-semibold text-slate-700">All Instruments Compliant</p>
-                        <p className="text-[11px] text-slate-400">No certificates currently expiring within 30 days.</p>
+
+                        <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                          <Link
+                            href="/lmo?tab=inspection_queue"
+                            onClick={() => setShowAlerts(false)}
+                            className="text-xs font-bold text-[#002B49] hover:underline"
+                          >
+                            Open LMO Verification Portal →
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => setShowAlerts(false)}
+                            className="text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
+                          >
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Admin Central Command Notification Dropdown */}
+                    {isAdminUser && (
+                      <div>
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                              <Bell className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-black text-slate-900">DoCA Command Alerts</h4>
+                              <p className="text-[10px] text-slate-500 font-medium">State Metrology Overview</p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200">
+                            {notificationCount} System Alerts
+                          </span>
+                        </div>
+
+                        <div className="mt-3 space-y-2 text-xs">
+                          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+                            <span className="font-semibold text-slate-700">Pending Field Inspections</span>
+                            <span className="font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-md">{pendingLmoRequests.length}</span>
+                          </div>
+                          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+                            <span className="font-semibold text-slate-700">LMO Approved (GATC Queue)</span>
+                            <span className="font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">{lmoApprovedApplications.length}</span>
+                          </div>
+                          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+                            <span className="font-semibold text-slate-700">Expiring Certifications (&lt; 30d)</span>
+                            <span className="font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md">{expiringTraders.length}</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                          <Link
+                            href="/doca"
+                            onClick={() => setShowAlerts(false)}
+                            className="text-xs font-bold text-[#002B49] hover:underline"
+                          >
+                            Open DoCA Command →
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => setShowAlerts(false)}
+                            className="text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
+                          >
+                            Close
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
-
-                  <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
-                    {currentUser.role === 'APPLICANT' ? (
-                      <Link
-                        href="/apply"
-                        onClick={() => setShowAlerts(false)}
-                        className="text-xs font-bold text-[#002B49] hover:underline"
-                      >
-                        Apply for Calibration & Stamping →
-                      </Link>
-                    ) : (
-                      <Link
-                        href="/lmo"
-                        onClick={() => setShowAlerts(false)}
-                        className="text-xs font-bold text-[#002B49] hover:underline"
-                      >
-                        Open LMO Verification Portal →
-                      </Link>
-                    )}
-                    <button
-                      onClick={() => setShowAlerts(false)}
-                      className="text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
             {/* Officer / User Profile Badge */}
             <div className="relative">

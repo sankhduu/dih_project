@@ -27,6 +27,7 @@ import {
   FileCheck,
   Wifi,
   WifiOff,
+  Bell,
 } from 'lucide-react';
 
 export type LmoTabType = 'inspection_queue' | 'visit_schedule' | 'verified' | 'certificates_issued';
@@ -970,8 +971,19 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
           </div>
         </div>
 
-        {/* Refresh Action for Assigned Jurisdiction */}
-        <div className="flex items-center gap-2 self-start md:self-auto">
+        {/* LMO Notifications & Refresh Action */}
+        <div className="flex items-center gap-2.5 self-start md:self-auto flex-wrap">
+          {counts.queue > 0 && (
+            <button
+              type="button"
+              onClick={() => handleTabChange('inspection_queue')}
+              className="px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-2xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+              title="View Pending Trader Inspection Queue"
+            >
+              <Bell className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+              <span>{counts.queue} Pending Inspections</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => fetchDistrictData(userDistrict)}
