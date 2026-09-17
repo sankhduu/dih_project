@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'offline_sync_service.dart';
+import 'demo_service.dart';
 
 /// Data model representing a Trader registered in the Legal Metrology System
 class Trader {
@@ -19,6 +20,7 @@ class Trader {
   final String? inspectionImageUrl;
   final String? createdAt;
   final String? updatedAt;
+  final String district;
 
   Trader({
     this.id,
@@ -36,11 +38,11 @@ class Trader {
     this.updatedAt,
     String? district,
     String? traderEmail,
-  }) : inspectionStatus = inspectionStatus ?? status ?? 'Pending';
+  })  : inspectionStatus = inspectionStatus ?? status ?? 'Pending',
+        district = district ?? 'Hisar';
 
   // Backward compatibility getters for existing Flutter UI
   String get status => inspectionStatus;
-  String get district => 'Hisar';
   String get traderEmail => '';
   int get riskScore => 20;
   String get riskTier => 'LOW';
@@ -61,6 +63,7 @@ class Trader {
       inspectionImageUrl: (json['inspection_image_url'] ?? json['photo_url'])?.toString(),
       createdAt: json['created_at']?.toString(),
       updatedAt: json['updated_at']?.toString(),
+      district: (json['district'] ?? 'Hisar').toString(),
     );
   }
 
@@ -68,12 +71,15 @@ class Trader {
     return {
       'id': id,
       'trader_name': traderName,
+      'shop_name': traderName,
       'owner_name': ownerName,
       'license_number': licenseNumber,
       'latitude': latitude,
       'longitude': longitude,
       'instrument_type': instrumentType,
       'inspection_status': inspectionStatus,
+      'status': inspectionStatus,
+      'district': district,
       'assigned_officer': assignedOfficer,
       'inspection_image_url': inspectionImageUrl,
       'created_at': createdAt,
@@ -90,6 +96,9 @@ class ApiService {
   );
   static const String androidEmulatorBaseUrl = 'http://10.0.2.2:3000';
 
+  static bool get isDemoMode => DemoService.isDemoMode;
+  static set isDemoMode(bool value) => DemoService.isDemoMode = value;
+
   final String baseUrl;
   final OfflineSyncService _syncService = OfflineSyncService();
 
@@ -97,6 +106,12 @@ class ApiService {
 
   /// Fetch all traders with 'Pending' inspection status from traders table
   Future<List<Trader>> fetchPendingTraders({String? district}) async {
+    // 0. Golden Path Demo Mode: completely bypass Supabase and network
+    if (DemoService.isDemoMode) {
+      debugPrint('🌟 [Demo Mode] Bypassing Supabase fetchPendingTraders call.');
+      return DemoService.dummyTraders;
+    }
+
     // 1. Direct Supabase REST fetch from traders table matching inspection_status = 'Pending'
     try {
       final List<dynamic> sbRes = await Supabase.instance.client
@@ -148,6 +163,12 @@ class ApiService {
 
   /// Submit an inspection report (handles online immediate upload or offline queuing)
   Future<bool> submitInspectionReport(OfflineInspectionReport report) async {
+    if (DemoService.isDemoMode) {
+      debugPrint('🌟 [Demo Mode] submitInspectionReport bypassed network call.');
+      DemoService.markAsPassed(report.licenseNumber);
+      return true;
+    }
+
     if (_syncService.isOnline) {
       try {
         String? uploadedUrl;

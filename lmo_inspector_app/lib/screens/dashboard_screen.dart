@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/api_service.dart';
 import '../services/offline_sync_service.dart';
 import '../services/mpe_calculator_service.dart';
+import '../services/demo_service.dart';
 import 'login_screen.dart';
 import 'inspection_screen.dart';
 
@@ -69,6 +70,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _errorMessage = null;
     });
 
+    // 0. Golden Path Demo Mode: completely bypass Supabase fetch calls
+    if (DemoService.isDemoMode) {
+      if (mounted) {
+        setState(() {
+          _liveTraders = DemoService.dummyTradersMap;
+          _isLoading = false;
+          _errorMessage = null;
+        });
+        debugPrint('🌟 [Demo Mode] Supabase fetch bypassed. Loaded ${_liveTraders.length} dummy traders.');
+      }
+      return;
+    }
+
     try {
       // Direct live REST fetch from Supabase traders table matching inspection_status 'Pending'
       final List<dynamic> response = await Supabase.instance.client
@@ -118,6 +132,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Setup Realtime stream to dynamically receive newly inserted applications
   void _setupRealtimeSubscription() {
+    if (DemoService.isDemoMode) {
+      debugPrint('🌟 [Demo Mode] Realtime stream bypassed.');
+      return;
+    }
+
     try {
       _streamSubscription = Supabase.instance.client
           .from('traders')
@@ -497,6 +516,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ],
                           ),
                         )
+                      else if ((trader['inspection_status'] ?? trader['status'] ?? '').toString().trim().toLowerCase() == 'passed')
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFA7F3D0)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF059669)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Passed',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF059669),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
                       else
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -506,7 +549,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             border: Border.all(color: Colors.blue.shade200),
                           ),
                           child: const Text(
-                            'Pending_LMO',
+                            'Pending',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
@@ -679,6 +722,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
         actions: [
+          // Golden Path Demo Mode Indicator & Toggle
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                setState(() {
+                  DemoService.toggleDemoMode();
+                });
+                _fetchLiveTraders();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      DemoService.isDemoMode
+                          ? '🌟 Golden Path Demo Mode: ON (Using Dummy Traders)'
+                          : '🌐 Live Mode: ON (Connecting to Supabase API)',
+                    ),
+                    duration: const Duration(seconds: 2),
+                    backgroundColor: DemoService.isDemoMode ? accentGold : primaryNavy,
+                  ),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: DemoService.isDemoMode ? const Color(0xFFF59E0B) : Colors.white24,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      DemoService.isDemoMode ? Icons.bolt : Icons.cloud_outlined,
+                      size: 13,
+                      color: DemoService.isDemoMode ? primaryNavy : Colors.white,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      DemoService.isDemoMode ? 'DEMO' : 'LIVE',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: DemoService.isDemoMode ? primaryNavy : Colors.white,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
           // Background Sync / Sync Now Button
           if (isSyncing)
             const Padding(

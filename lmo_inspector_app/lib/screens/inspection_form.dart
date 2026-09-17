@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import '../services/api_service.dart';
 import '../services/offline_sync_service.dart';
 import '../services/mpe_calculator_service.dart';
+import '../services/demo_service.dart';
 import '../main.dart';
 
 class InspectionFormScreen extends StatefulWidget {
@@ -249,6 +250,29 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     setState(() {
       _isSubmitting = true;
     });
+
+    if (DemoService.isDemoMode) {
+      await Future.delayed(const Duration(seconds: 2));
+      DemoService.markAsPassed(widget.trader.licenseNumber);
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text('Inspection Synced Successfully'),
+              ],
+            ),
+            backgroundColor: Color(0xFF059669),
+            duration: Duration(seconds: 3),
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+      return;
+    }
 
     final now = DateTime.now();
     String? uploadedImageUrl;

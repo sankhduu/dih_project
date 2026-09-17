@@ -7,6 +7,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/offline_sync_service.dart';
 import '../services/geo_verification_service.dart';
 import '../services/mpe_calculator_service.dart';
+import '../services/demo_service.dart';
 
 class InspectionScreen extends StatefulWidget {
   final String traderName;
@@ -303,6 +304,177 @@ class _InspectionScreenState extends State<InspectionScreen> {
   /// Large Green "Approve & Certify" Button Handler
   /// Implements online sync to Supabase and offline sync via SharedPreferences
   Future<void> _handleApproveAndCertify() async {
+    // =========================================================================
+    // GOLDEN PATH DEMO MODE: Zero Network Calls, 2s Progress, Success SnackBar/Dialog & State Update
+    // =========================================================================
+    if (DemoService.isDemoMode) {
+      _selectAllChecks();
+
+      setState(() {
+        _isSubmitting = true;
+      });
+
+      // 1. Show CircularProgressIndicator dialog for 2 seconds
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const PopScope(
+          canPop: false,
+          child: Center(
+            child: Card(
+              elevation: 8,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(
+                      color: Color(0xFF002B49),
+                      strokeWidth: 3,
+                    ),
+                    SizedBox(height: 18),
+                    Text(
+                      'Submitting Inspection...',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF002B49),
+                      ),
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      'Golden Path Demo Mode • Instant Verification',
+                      style: TextStyle(fontSize: 11, color: Colors.black54),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Wait exactly 2 seconds
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Dismiss progress dialog
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+
+      // 2. Update local in-memory state to 'Passed'
+      final cleanLic = widget.licenseNumber.isNotEmpty
+          ? widget.licenseNumber
+          : (widget.trader?['license_number'] ?? widget.trader?['id'] ?? 'HR-LMO-2026-0042').toString();
+      DemoService.markAsPassed(cleanLic);
+      if (widget.traderName.isNotEmpty) {
+        DemoService.markAsPassed(widget.traderName);
+      }
+
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+
+        // 3. Show Success SnackBar
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Inspection Synced Successfully',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: emeraldGreen,
+            duration: Duration(seconds: 3),
+          ),
+        );
+
+        // 4. Show Success Dialog
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogCtx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.verified_rounded, color: emeraldGreen, size: 28),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Inspection Synced Successfully',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: primaryNavy,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Physical verification for "${widget.traderName}" has been approved and marked as Passed.',
+                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFA7F3D0)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.check_circle_outline, color: emeraldGreen, size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Status: Passed (Schedule IX Certificate Ready)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: emeraldGreen,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryNavy,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('Return to Dashboard'),
+              ),
+            ],
+          ),
+        );
+
+        if (mounted) {
+          Navigator.pop(context, true);
+        }
+      }
+      return;
+    }
+
     if (!_areAllChecksPassed) {
       final proceed = await showDialog<bool>(
         context: context,
@@ -1494,10 +1666,10 @@ class _InspectionScreenState extends State<InspectionScreen> {
                         : const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.send_rounded, size: 22),
+                              Icon(Icons.check_circle_outline_rounded, size: 22),
                               SizedBox(width: 10),
                               Text(
-                                'Submit Inspection to GATC',
+                                'Approve & Submit',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
