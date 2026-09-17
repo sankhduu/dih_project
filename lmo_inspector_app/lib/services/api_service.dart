@@ -7,100 +7,103 @@ import 'offline_sync_service.dart';
 
 /// Data model representing a Trader registered in the Legal Metrology System
 class Trader {
+  final String? id;
   final String traderName;
   final String ownerName;
   final String licenseNumber;
   final double? latitude;
   final double? longitude;
   final String instrumentType;
-  final String status; // 'Pending_LMO', 'Pending_GATC', 'Verified', 'Rejected'
-  final String district;
-  final String traderEmail;
-  final int riskScore;
-  final String riskTier;
-  final int complaintsCount;
-  final String? canonicalSealNumber;
+  final String inspectionStatus; // 'Pending', 'Passed', 'Failed'
+  final String? assignedOfficer;
+  final String? inspectionImageUrl;
+  final String? createdAt;
+  final String? updatedAt;
 
   Trader({
+    this.id,
     required this.traderName,
     required this.ownerName,
     required this.licenseNumber,
     this.latitude,
     this.longitude,
     required this.instrumentType,
-    required this.status,
-    this.district = 'Hisar',
-    this.traderEmail = '',
-    this.riskScore = 20,
-    this.riskTier = 'LOW',
-    this.complaintsCount = 0,
-    this.canonicalSealNumber,
-  });
+    String? inspectionStatus,
+    String? status,
+    this.assignedOfficer,
+    this.inspectionImageUrl,
+    this.createdAt,
+    this.updatedAt,
+    String? district,
+    String? traderEmail,
+  }) : inspectionStatus = inspectionStatus ?? status ?? 'Pending';
 
-  // Backward compatibility getters
-  String get id => licenseNumber;
-  String get inspectionStatus => status;
+  // Backward compatibility getters for existing Flutter UI
+  String get status => inspectionStatus;
+  String get district => 'Hisar';
+  String get traderEmail => '';
+  int get riskScore => 20;
+  String get riskTier => 'LOW';
+  int get complaintsCount => 0;
+  String? get canonicalSealNumber => null;
 
   factory Trader.fromJson(Map<String, dynamic> json) {
     return Trader(
+      id: json['id']?.toString(),
       traderName: (json['trader_name'] ?? json['shop_name'] ?? 'Unknown Trader').toString(),
       ownerName: (json['owner_name'] ?? 'Proprietor').toString(),
       licenseNumber: (json['license_number'] ?? json['id'] ?? 'LMO/2026/00000').toString(),
       latitude: json['latitude'] != null ? double.tryParse(json['latitude'].toString()) : null,
       longitude: json['longitude'] != null ? double.tryParse(json['longitude'].toString()) : null,
       instrumentType: (json['instrument_type'] ?? 'Weighing Scale').toString(),
-      status: (json['status'] ?? json['inspection_status'] ?? 'Pending_LMO').toString(),
-      district: (json['district'] ?? 'Hisar').toString(),
-      traderEmail: (json['trader_email'] ?? '').toString(),
-      riskScore: int.tryParse((json['risk_score'] ?? '20').toString()) ?? 20,
-      riskTier: (json['risk_tier'] ?? 'LOW').toString(),
-      complaintsCount: int.tryParse((json['complaints_count'] ?? '0').toString()) ?? 0,
-      canonicalSealNumber: json['canonical_seal_number']?.toString(),
+      inspectionStatus: (json['inspection_status'] ?? json['status'] ?? 'Pending').toString(),
+      assignedOfficer: json['assigned_officer']?.toString(),
+      inspectionImageUrl: (json['inspection_image_url'] ?? json['photo_url'])?.toString(),
+      createdAt: json['created_at']?.toString(),
+      updatedAt: json['updated_at']?.toString(),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'trader_name': traderName,
       'owner_name': ownerName,
       'license_number': licenseNumber,
       'latitude': latitude,
       'longitude': longitude,
       'instrument_type': instrumentType,
-      'status': status,
-      'district': district,
-      'trader_email': traderEmail,
+      'inspection_status': inspectionStatus,
+      'assigned_officer': assignedOfficer,
+      'inspection_image_url': inspectionImageUrl,
+      'created_at': createdAt,
+      'updated_at': updatedAt,
     };
   }
 }
 
-/// Service connecting to the Legal Metrology (LMO) Express API Backend with Offline Caching
+/// Service connecting to the Legal Metrology (LMO) Next.js Backend with Offline Caching
 class ApiService {
   static const String defaultBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:5000',
+    defaultValue: 'http://10.0.2.2:3000',
   );
-  static const String androidEmulatorBaseUrl = 'http://10.0.2.2:5000';
+  static const String androidEmulatorBaseUrl = 'http://10.0.2.2:3000';
 
   final String baseUrl;
   final OfflineSyncService _syncService = OfflineSyncService();
 
   ApiService({String? baseUrl}) : baseUrl = baseUrl ?? defaultBaseUrl;
 
-  /// Fetch all traders with 'Pending_LMO' inspection status with offline-first cache
+  /// Fetch all traders with 'Pending' inspection status from traders table
   Future<List<Trader>> fetchPendingTraders({String? district}) async {
-    // 1. Direct Supabase REST fetch from traders_list matching Pending_LMO
+    // 1. Direct Supabase REST fetch from traders table matching inspection_status = 'Pending'
     try {
-      var query = Supabase.instance.client
-          .from('traders_list')
+      final List<dynamic> sbRes = await Supabase.instance.client
+          .from('traders')
           .select()
-          .or('status.eq.Pending_LMO,status.eq.Pending_Inspection,status.eq.Pending');
+          .eq('inspection_status', 'Pending');
 
-      if (district != null && district.isNotEmpty && district.toLowerCase() != 'all') {
-        query = query.ilike('district', '%$district%');
-      }
-
-      final List<dynamic> sbRes = await query;
       if (sbRes.isNotEmpty) {
         final traders = sbRes.map((item) => Trader.fromJson(Map<String, dynamic>.from(item))).toList();
         await _syncService.cacheTraders(traders);
@@ -110,12 +113,9 @@ class ApiService {
       debugPrint('Direct Supabase fetch note in ApiService: $sbErr');
     }
 
-    // 2. Secondary: API Server fetch
+    // 2. Secondary: Next.js API Server fetch
     try {
-      final distParam = district != null && district.isNotEmpty && district.toLowerCase() != 'all'
-          ? '&district=${Uri.encodeComponent(district)}'
-          : '';
-      final uri = Uri.parse('$baseUrl/api/traders?status=Pending_LMO$distParam');
+      final uri = Uri.parse('$baseUrl/api/traders?inspection_status=Pending');
       final response = await http.get(uri).timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200) {
@@ -150,24 +150,44 @@ class ApiService {
   Future<bool> submitInspectionReport(OfflineInspectionReport report) async {
     if (_syncService.isOnline) {
       try {
+        String? uploadedUrl;
         // 1. If photo exists locally, upload to Supabase Storage
         if (report.photoPath != null && File(report.photoPath!).existsSync()) {
-          await uploadInspectionImage(report.licenseNumber, File(report.photoPath!));
+          uploadedUrl = await uploadInspectionImage(report.licenseNumber, File(report.photoPath!));
         }
 
-        // 2. Direct Supabase update on traders_list to Pending_GATC
-        final targetStatus = report.inspectionStatus.trim().isEmpty || report.inspectionStatus == 'Under_Review'
-            ? 'Pending_GATC'
-            : report.inspectionStatus;
+        // 2. Normalize inspection status strictly to 'Passed', 'Failed', or 'Pending'
+        final raw = report.inspectionStatus.trim();
+        final normalizedStatus = (raw == 'Passed' || raw == 'Approved' || raw == 'Verified')
+            ? 'Passed'
+            : (raw == 'Failed' || raw == 'Rejected')
+                ? 'Failed'
+                : 'Pending';
+
         try {
           await Supabase.instance.client
-              .from('traders_list')
-              .update({'status': targetStatus})
+              .from('traders')
+              .update({
+                'inspection_status': normalizedStatus,
+                'inspection_image_url': ?uploadedUrl,
+              })
               .eq('license_number', report.licenseNumber.trim())
               .select();
-          debugPrint('✅ Direct Supabase status updated to $targetStatus for ${report.licenseNumber}');
+          debugPrint('✅ Direct Supabase traders status updated to $normalizedStatus for ${report.licenseNumber}');
         } catch (sbErr) {
           debugPrint('Direct Supabase status update note: $sbErr');
+        }
+
+        // 3. Also record in inspections audit table
+        try {
+          await Supabase.instance.client.from('inspections').insert({
+            'license_number': report.licenseNumber.trim(),
+            'inspection_status': normalizedStatus,
+            'photo_url': uploadedUrl,
+            'inspected_at': DateTime.now().toIso8601String(),
+          });
+        } catch (inspErr) {
+          debugPrint('Inspections table insert note: $inspErr');
         }
 
         final uri = Uri.parse('$baseUrl/api/inspections/sync');
@@ -177,7 +197,7 @@ class ApiService {
               headers: {'Content-Type': 'application/json'},
               body: json.encode({
                 'license_number': report.licenseNumber,
-                'inspection_status': targetStatus,
+                'inspection_status': normalizedStatus,
                 'gps_coordinates': report.gpsCoordinates,
                 'photo_path': report.photoPath,
                 'seal_number': report.sealNumber,

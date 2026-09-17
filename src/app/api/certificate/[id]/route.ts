@@ -27,25 +27,16 @@ export async function GET(
     if (supabase) {
       try {
         let { data } = await supabase
-          .from('traders_list')
+          .from('traders')
           .select('*')
           .eq('license_number', licenseNumber)
           .maybeSingle();
 
         if (!data) {
-          const trRes = await supabase
+          const res = await supabase
             .from('traders')
             .select('*')
-            .eq('license_number', licenseNumber)
-            .maybeSingle();
-          data = trRes.data;
-        }
-
-        if (!data) {
-          const res = await supabase
-            .from('lmo_mock_traders')
-            .select('*')
-            .eq('license_number', licenseNumber)
+            .eq('id', licenseNumber)
             .maybeSingle();
           data = res.data;
         }

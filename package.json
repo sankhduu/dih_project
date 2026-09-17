@@ -6,7 +6,6 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "server": "node server.js",
     "lint": "next lint",
     "test": "node test/security-and-scale.test.js",
     "test:compliance": "npx tsx test-compliance.ts"

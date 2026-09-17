@@ -488,9 +488,9 @@ export default function HomePage() {
                     <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50">
                       <div className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                        <span className="font-semibold text-slate-700">Express API Gateway</span>
+                        <span className="font-semibold text-slate-700">Next.js API Gateway</span>
                       </div>
-                      <span className="text-[10px] font-mono text-slate-500">Port 5000</span>
+                      <span className="text-[10px] font-mono text-slate-500">Native APIs (Port 3000)</span>
                     </div>
 
                     <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50">

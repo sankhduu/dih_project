@@ -57,7 +57,7 @@ const MOCK_OFFICERS = [
   'Inspector Vikram Rathore (Rapid Response)',
 ];
 
-// Fallback preview data in case the local Express server on port 5000 is still starting up
+// Fallback preview data in case database connection is pending
 const FALLBACK_TRADERS: Trader[] = [
   {
     trader_name: 'Apex Supermarket & Grocery Store',

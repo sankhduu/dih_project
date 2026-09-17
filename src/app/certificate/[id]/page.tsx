@@ -48,14 +48,24 @@ export default function StandaloneCertificatePage() {
     async function loadShop() {
       setLoading(true);
       try {
-        const { data, error } = await supabase
-          .from('traders_list')
-          .select('*')
-          .or(`id.eq.${rawId},license_number.eq.${rawId}`)
-          .maybeSingle();
+        const isNumeric = !isNaN(Number(rawId));
+        let query = supabase.from('traders').select('*');
+        if (isNumeric) {
+          query = query.or(`id.eq.${rawId},license_number.eq.${rawId}`);
+        } else {
+          query = query.eq('license_number', rawId);
+        }
+        const { data, error } = await query.maybeSingle();
 
         if (data && !error) {
-          setShop(data as TraderRecord);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const raw: any = data;
+          setShop({
+            ...raw,
+            shop_name: raw.trader_name || raw.shop_name,
+            status: raw.inspection_status || raw.status || 'Verified',
+            district: raw.district || 'Hisar',
+          } as TraderRecord);
         } else {
           setShop({
             ...FALLBACK_SHOP,

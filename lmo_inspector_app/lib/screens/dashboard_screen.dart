@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/api_service.dart';
 import '../services/offline_sync_service.dart';
 import '../services/mpe_calculator_service.dart';
 import 'login_screen.dart';
@@ -60,7 +61,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  /// Force a live REST fetch directly from Supabase traders_list table with status 'Pending_LMO'
+  /// Force a live REST fetch directly from Supabase traders table with inspection_status 'Pending'
   Future<void> _fetchLiveTraders() async {
     if (!mounted) return;
     setState(() {
@@ -69,25 +70,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     try {
-      // Direct live REST fetch from Supabase traders table matching Pending_LMO (or equivalents)
+      // Direct live REST fetch from Supabase traders table matching inspection_status 'Pending'
       final List<dynamic> response = await Supabase.instance.client
           .from('traders')
           .select()
-          .or('status.eq.Pending_LMO,status.eq.Pending_Inspection,status.eq.Pending');
+          .or('inspection_status.eq.Pending,inspection_status.eq.Pending_LMO,status.eq.Pending,status.eq.Pending_LMO');
 
       if (mounted) {
         setState(() {
           _liveTraders = List<Map<String, dynamic>>.from(response);
           _isLoading = false;
         });
-        debugPrint('✅ [LMO Dashboard] Live REST fetch loaded ${_liveTraders.length} Pending_LMO applications.');
+        debugPrint('✅ [LMO Dashboard] Live REST fetch loaded ${_liveTraders.length} Pending applications.');
       }
     } catch (e) {
       debugPrint('⚠️ [LMO Dashboard] Supabase direct REST fetch notice: $e');
 
-      // Fallback: Check local Express/Next.js API server
+      // Fallback: Check local Next.js API server
       try {
-        final apiUri = Uri.parse('http://localhost:5000/api/traders?status=Pending_LMO');
+        final apiUri = Uri.parse('${ApiService.defaultBaseUrl}/api/traders?inspection_status=Pending');
         final httpRes = await http.get(apiUri).timeout(const Duration(seconds: 4));
         if (httpRes.statusCode == 200) {
           final body = json.decode(httpRes.body);
@@ -119,14 +120,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _setupRealtimeSubscription() {
     try {
       _streamSubscription = Supabase.instance.client
-          .from('traders_list')
-          .stream(primaryKey: ['license_number'])
+          .from('traders')
+          .stream(primaryKey: ['id'])
           .listen(
         (data) {
           if (mounted) {
             final pending = data.where((item) {
-              final s = (item['status'] ?? '').toString().trim().toLowerCase();
-              return s == 'pending_lmo' || s == 'pending_inspection' || s == 'pending';
+              final s = (item['inspection_status'] ?? item['status'] ?? '').toString().trim().toLowerCase();
+              return s == 'pending' || s == 'pending_lmo' || s == 'pending_inspection';
             }).toList();
             setState(() {
               _liveTraders = pending;
@@ -321,7 +322,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final filteredTraders = allTraders.where((t) {
       if (_selectedDistrict.toLowerCase() == 'all') return true;
-      final d = (t['district'] ?? '').toString().toLowerCase();
+      final d = (t['district'] ?? 'Hisar').toString().toLowerCase();
       return d == _selectedDistrict.toLowerCase();
     }).toList();
 

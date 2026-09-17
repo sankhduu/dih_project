@@ -166,18 +166,26 @@ export default function DocaDashboardPage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
 
-  // Fetch real-time data from Supabase traders_list
+  // Fetch real-time data from Supabase traders
   const fetchDocaData = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('traders_list')
+        .from('traders')
         .select('*')
-        .order('license_number', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (data && !error && data.length > 0) {
-        const fetchedMap = new Map(data.map((d) => [d.id || d.license_number, d]));
-        const merged = [...data];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mappedData = data.map((d: any) => ({
+          ...d,
+          shop_name: d.trader_name || d.shop_name,
+          status: d.inspection_status === 'Passed' ? 'Verified' : (d.status || d.inspection_status || 'Pending_Inspection'),
+          inspection_status: d.inspection_status || 'Pending',
+          district: d.district || 'Hisar',
+        }));
+        const fetchedMap = new Map(mappedData.map((d) => [d.id || d.license_number, d]));
+        const merged = [...mappedData];
         for (const seed of SEED_DOCA_RECORDS) {
           if (!fetchedMap.has(seed.id) && !fetchedMap.has(seed.license_number)) {
             merged.push(seed);
@@ -188,7 +196,7 @@ export default function DocaDashboardPage() {
         setUsers(SEED_DOCA_RECORDS);
       }
     } catch (err) {
-      console.warn('Note on Supabase traders_list fetch for DoCA:', err);
+      console.warn('Note on Supabase traders fetch for DoCA:', err);
       setUsers(SEED_DOCA_RECORDS);
     } finally {
       setLoading(false);
@@ -199,16 +207,24 @@ export default function DocaDashboardPage() {
     fetchDocaData();
   }, []);
 
-  // Supabase Realtime subscription: updates table instantly when Flutter app sets status to 'Verified'
+  // Supabase Realtime subscription: updates table instantly when Flutter app sets inspection_status to 'Passed'
   useEffect(() => {
     const channel = supabase
       .channel('doca-realtime-listener')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'traders_list' },
+        { event: '*', schema: 'public', table: 'traders' },
         (payload) => {
-          const updatedRow = (payload.new || payload.old) as DocaTraderRecord;
-          if (!updatedRow) return;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const raw: any = payload.new || payload.old;
+          if (!raw) return;
+          const updatedRow: DocaTraderRecord = {
+            ...raw,
+            shop_name: raw.trader_name || raw.shop_name,
+            status: raw.inspection_status === 'Passed' ? 'Verified' : (raw.status || raw.inspection_status || 'Pending_Inspection'),
+            inspection_status: raw.inspection_status || 'Pending',
+            district: raw.district || 'Hisar',
+          };
 
           setUsers((prev) => {
             const exists = prev.some(

@@ -109,7 +109,7 @@ export default function TraderDashboardPage() {
     checkTraderAuth();
   }, [router, currentUser.role, currentUser.email]);
 
-  // 2. Fetch Initial Trader Record from Supabase traders_list (strictly filtered by current user identifier)
+  // 2. Fetch Initial Trader Record from Supabase traders
   useEffect(() => {
     async function fetchTraderRecord() {
       try {
@@ -133,16 +133,17 @@ export default function TraderDashboardPage() {
           }
         }
 
-        // Must query the traders_list table strictly filtered by the currently logged-in user's identifier
-        let query = supabase.from('traders_list').select('*');
-        if (effectiveUserId && effectiveEmail) {
-          query = query.or(`user_id.eq.${effectiveUserId},trader_email.eq.${effectiveEmail}`);
-        } else if (effectiveUserId) {
-          query = query.eq('user_id', effectiveUserId);
+        // Must query the traders table strictly filtered by user identifier or last applied license
+        const lastAppliedLic = typeof window !== 'undefined' ? localStorage.getItem('last_applied_license') : null;
+        let query = supabase.from('traders').select('*');
+
+        if (lastAppliedLic) {
+          query = query.eq('license_number', lastAppliedLic);
+        } else if (currentUser.fullName && currentUser.fullName !== 'User') {
+          query = query.or(`owner_name.ilike.%${currentUser.fullName}%,trader_name.ilike.%${currentUser.fullName}%`);
         } else if (effectiveEmail) {
-          query = query.eq('trader_email', effectiveEmail);
-        } else if (effectivePhone) {
-          query = query.eq('phone', effectivePhone);
+          const userPrefix = effectiveEmail.split('@')[0];
+          query = query.or(`owner_name.ilike.%${userPrefix}%,trader_name.ilike.%${userPrefix}%`);
         } else {
           setTraderShop(null);
           setHasApplied(false);
@@ -156,7 +157,15 @@ export default function TraderDashboardPage() {
           .maybeSingle();
 
         if (data && !error) {
-          setTraderShop(data as TraderRecord);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const raw: any = data;
+          const record: TraderRecord = {
+            ...raw,
+            shop_name: raw.trader_name || raw.shop_name,
+            status: raw.inspection_status || raw.status || 'Pending',
+            district: raw.district || 'Hisar',
+          };
+          setTraderShop(record);
           setHasApplied(true);
         } else {
           // If no row is found for this specific user, explicitly set state to show the 'Apply Now' form
@@ -177,7 +186,7 @@ export default function TraderDashboardPage() {
     // Heartbeat polling every 4 seconds to guarantee UI updates without refresh
     const pollTimer = setInterval(fetchTraderRecord, 4000);
     return () => clearInterval(pollTimer);
-  }, [sessionEmail, sessionUserId, sessionPhone, currentUser.email, currentUser.id]);
+  }, [sessionEmail, sessionUserId, sessionPhone, currentUser.email, currentUser.id, currentUser.fullName]);
 
   // 3. Supabase Realtime Listener (Listening to LMO and GATC actions, and new Applications)
   useEffect(() => {
@@ -185,44 +194,34 @@ export default function TraderDashboardPage() {
       .channel('trader-realtime-lifecycle')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'traders_list' },
+        { event: '*', schema: 'public', table: 'traders' },
         (payload) => {
-          const updatedRow = (payload.new || payload.old) as TraderRecord;
-          if (!updatedRow) return;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const raw: any = payload.new || payload.old;
+          if (!raw) return;
 
-          const targetEmail = sessionEmail || currentUser.email;
-          const targetId = sessionUserId || currentUser.id;
-          const targetPhone = sessionPhone || currentUser.mobile;
+          const updatedRow: TraderRecord = {
+            ...raw,
+            shop_name: raw.trader_name || raw.shop_name,
+            status: raw.inspection_status || raw.status || 'Pending',
+            district: raw.district || 'Hisar',
+          };
 
-          const matchesUser =
-            (targetId && updatedRow.user_id === targetId) ||
-            (targetEmail && updatedRow.trader_email === targetEmail) ||
-            (targetPhone && updatedRow.phone === targetPhone);
+          const targetLic = typeof window !== 'undefined' ? localStorage.getItem('last_applied_license') : null;
+          const matches =
+            (targetLic && updatedRow.license_number === targetLic) ||
+            (currentUser.fullName && (updatedRow.owner_name?.includes(currentUser.fullName) || updatedRow.trader_name?.includes(currentUser.fullName)));
 
-          if (!matchesUser) return;
-
-          if (payload.eventType === 'DELETE') {
-            setTraderShop(null);
-            setHasApplied(false);
-            return;
-          }
-
-          setTraderShop((prev) => {
+          if (matches) {
+            setTraderShop(updatedRow);
             setHasApplied(true);
-            if (payload.eventType === 'INSERT') {
-              return { ...updatedRow };
+            setIsLoadingRecord(false);
+
+            const st = (updatedRow.status || '').toLowerCase();
+            if (st === 'passed' || st === 'verified' || st === 'approved') {
+              setJustApproved(true);
             }
-            if (!prev?.id || prev.id === updatedRow.id || prev.license_number === updatedRow.license_number) {
-              const wasNotVerified = (prev?.status || '').toLowerCase() !== 'verified';
-              const isNowVerified = (updatedRow.status || '').toLowerCase() === 'verified';
-              if (wasNotVerified && isNowVerified) {
-                setJustApproved(true);
-                setTimeout(() => setJustApproved(false), 8000);
-              }
-              return { ...(prev || {}), ...updatedRow };
-            }
-            return prev;
-          });
+          }
         }
       )
       .subscribe();
@@ -230,7 +229,7 @@ export default function TraderDashboardPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [sessionEmail, sessionUserId, sessionPhone, currentUser.email, currentUser.id]);
+  }, [sessionEmail, sessionUserId, sessionPhone, currentUser.email, currentUser.id, currentUser.fullName]);
 
   // Handler for Re-Applying when rejected
   const handleReapply = async () => {
@@ -240,9 +239,9 @@ export default function TraderDashboardPage() {
       const targetLic = (traderShop.license_number || traderShop.id || '').trim();
       if (targetLic) {
         const { error } = await supabase
-          .from('traders_list')
+          .from('traders')
           .update({
-            status: 'Pending_LMO',
+            inspection_status: 'Pending',
           })
           .eq('license_number', targetLic)
           .select();

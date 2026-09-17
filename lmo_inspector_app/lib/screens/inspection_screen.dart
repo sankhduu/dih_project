@@ -428,8 +428,9 @@ class _InspectionScreenState extends State<InspectionScreen> {
         );
         syncedOnline = false;
       } else {
-        // Online: attempt photo upload and update Supabase traders_list
+        // Online: attempt photo upload, update Supabase traders, and insert into inspections
         final supabase = Supabase.instance.client;
+        String? uploadedPhotoUrl;
 
         if (_capturedImageFile != null && _capturedImageFile!.existsSync()) {
           try {
@@ -442,22 +443,50 @@ class _InspectionScreenState extends State<InspectionScreen> {
               _capturedImageFile!,
               fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
             );
+            uploadedPhotoUrl = supabase.storage.from('inspections').getPublicUrl(storagePath);
             debugPrint('✅ Photo uploaded to Supabase Storage: $storagePath');
           } catch (storageErr) {
             debugPrint('Supabase Storage notice (safe fallback): $storageErr');
           }
         }
 
-        // Update Supabase traders_list row: status -> 'Pending_GATC'
+        // Update Supabase traders table: inspection_status -> 'Passed'
         final cleanLic = licenseNumber.trim();
-        final updateRes = await supabase.from('traders_list').update({
-          'status': 'Pending_GATC',
+        final dynamic traderId = widget.trader?['id'];
+        final traderUpdate = <String, dynamic>{
+          'inspection_status': 'Passed',
           'latitude': lat,
           'longitude': lng,
-        }).eq('license_number', cleanLic).select();
+          'inspection_image_url': ?uploadedPhotoUrl,
+        };
+
+        if (traderId != null) {
+          await supabase.from('traders').update(traderUpdate).eq('id', traderId);
+        } else {
+          await supabase.from('traders').update(traderUpdate).eq('license_number', cleanLic);
+        }
+
+        // Insert audit record into inspections table
+        try {
+          await supabase.from('inspections').insert({
+            'trader_id': ?traderId,
+            'license_number': cleanLic,
+            'inspection_status': 'Passed',
+            'gps_coordinates': '$lat,$lng',
+            'seal_number': 'SEAL-${DateTime.now().millisecondsSinceEpoch}',
+            'notes': 'Statutory verification completed and passed tolerances.',
+            'mpe_zero': _zeroResult.error,
+            'mpe_half': _halfLoadResult.error,
+            'mpe_full': _fullLoadResult.error,
+            'photo_url': ?uploadedPhotoUrl,
+            'inspected_at': DateTime.now().toIso8601String(),
+          });
+        } catch (insErr) {
+          debugPrint('Notice inserting inspection record: $insErr');
+        }
 
         syncedOnline = true;
-        debugPrint('✅ Online sync to Supabase succeeded: $cleanLic -> Pending_GATC ($updateRes)');
+        debugPrint('✅ Online sync to Supabase succeeded: $cleanLic -> Passed');
       }
 
       dismissBlockingDialog();

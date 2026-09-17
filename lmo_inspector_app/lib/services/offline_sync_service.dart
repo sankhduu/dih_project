@@ -295,7 +295,7 @@ class OfflineSyncService extends ChangeNotifier {
     final List<String> successfullySyncedLicenses = [];
     final supabase = Supabase.instance.client;
 
-    // 1. Sync all locally saved approvals to Supabase traders_list
+    // 1. Sync all locally saved approvals to Supabase traders table
     for (final item in List<Map<String, dynamic>>.from(_offlineApprovals)) {
       final lic = item['license_number']?.toString() ?? '';
       if (lic.isEmpty) continue;
@@ -303,6 +303,7 @@ class OfflineSyncService extends ChangeNotifier {
       final lat = (item['latitude'] as num?)?.toDouble() ?? 28.8955;
       final lng = (item['longitude'] as num?)?.toDouble() ?? 76.6066;
       final photoPath = item['photo_path']?.toString();
+      String? photoUrl;
 
       try {
         // Upload photo to Supabase storage if photo file exists locally
@@ -316,22 +317,38 @@ class OfflineSyncService extends ChangeNotifier {
               File(photoPath),
               fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
             );
+            photoUrl = supabase.storage.from('inspections').getPublicUrl(storagePath);
             debugPrint('📸 Queued photo uploaded to Supabase Storage during sync for $lic');
           } catch (storageErr) {
             debugPrint('Note on storage upload during sync: $storageErr');
           }
         }
 
-        // Update Supabase traders_list row: set status to 'Pending_GATC'
-        await supabase.from('traders_list').update({
-          'status': 'Pending_GATC',
+        // Update Supabase traders row: set inspection_status to 'Passed'
+        final traderUpdate = <String, dynamic>{
+          'inspection_status': 'Passed',
           'latitude': lat,
           'longitude': lng,
-        }).eq('license_number', lic.trim()).select();
+          'inspection_image_url': ?photoUrl,
+        };
+        await supabase.from('traders').update(traderUpdate).eq('license_number', lic.trim()).select();
+
+        // Also insert into inspections table
+        try {
+          await supabase.from('inspections').insert({
+            'license_number': lic.trim(),
+            'inspection_status': 'Passed',
+            'gps_coordinates': '$lat,$lng',
+            'seal_number': 'SEAL-${DateTime.now().millisecondsSinceEpoch}',
+            'notes': 'Offline inspection synced to cloud',
+            'photo_url': ?photoUrl,
+            'inspected_at': DateTime.now().toIso8601String(),
+          });
+        } catch (_) {}
 
         successfullySyncedLicenses.add(lic);
         successCount++;
-        debugPrint('✅ Successfully pushed offline approval to Supabase: $lic -> Pending_GATC');
+        debugPrint('✅ Successfully pushed offline approval to Supabase: $lic -> Passed');
       } catch (e) {
         debugPrint('⚠️ Sync failed for $lic (will retry on next connection event): $e');
         // If network is completely unreachable, break out to avoid busy looping
@@ -365,8 +382,8 @@ class OfflineSyncService extends ChangeNotifier {
 
     for (final report in List<OfflineInspectionReport>.from(_queuedReports)) {
       try {
-        await supabase.from('traders_list').update({
-          'status': 'Pending_GATC',
+        await supabase.from('traders').update({
+          'inspection_status': 'Passed',
         }).eq('license_number', report.licenseNumber.trim()).select();
 
         successfullySyncedReports.add(report);

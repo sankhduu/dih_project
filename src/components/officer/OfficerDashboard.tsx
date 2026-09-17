@@ -521,59 +521,45 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
     // 1. Direct Supabase Query (Filtered strictly by assigned District and status 'Pending_LMO' for inspection queue)
     if (supabase) {
       try {
-        let listQuery = supabase.from('traders_list').select('*');
-        if (district && district.toLowerCase() !== 'all') {
-          listQuery = listQuery.eq('district', district);
-        }
+        let listQuery = supabase.from('traders').select('*');
         if (tab === 'inspection_queue') {
-          listQuery = listQuery.eq('status', 'Pending_LMO');
+          listQuery = listQuery.or('inspection_status.eq.Pending,inspection_status.eq.Pending_LMO,status.eq.Pending,status.eq.Pending_LMO');
         } else if (tab === 'visit_schedule') {
-          listQuery = listQuery.or('status.eq.Scheduled,status.eq.visit_scheduled');
+          listQuery = listQuery.or('inspection_status.eq.Pending,status.eq.Scheduled,status.eq.visit_scheduled');
         } else if (tab === 'verified') {
-          listQuery = listQuery.eq('status', 'Verified');
+          listQuery = listQuery.or('inspection_status.eq.Passed,status.eq.Verified,status.eq.Approved');
         } else if (tab === 'certificates_issued') {
-          listQuery = listQuery.or('status.eq.Approved,status.eq.Verified');
+          listQuery = listQuery.or('inspection_status.eq.Passed,status.eq.Approved,status.eq.Verified');
         }
 
-        const { data: listData, error: listError } = await listQuery.order('license_number', { ascending: false });
+        const { data: listData, error: listError } = await listQuery.order('created_at', { ascending: false });
 
         if (!listError && listData && listData.length > 0) {
-          loaded = listData as TraderRecord[];
-        } else {
-          // Check 'traders' table with strict district or officer ID filter
-          let trQuery = supabase.from('traders').select('*');
-          if (activeOfficerEmail || activeOfficerId) {
-            const conditions = [`district.eq.${district}`];
-            if (activeOfficerEmail) conditions.push(`assigned_officer.eq.${activeOfficerEmail}`);
-            if (activeOfficerId) conditions.push(`assigned_officer.eq.${activeOfficerId}`);
-            trQuery = trQuery.or(conditions.join(','));
-          } else {
-            trQuery = trQuery.eq('district', district);
-          }
-          if (tab === 'inspection_queue') {
-            trQuery = trQuery.eq('status', 'Pending_LMO');
-          }
-          const { data: trData, error: trError } = await trQuery;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let rows = listData.map((t: any) => ({
+            id: String(t.id || t.license_number),
+            trader_name: t.shop_name || t.trader_name || 'Commercial Shop',
+            shop_name: t.shop_name || t.trader_name || 'Commercial Shop',
+            owner_name: t.owner_name || '',
+            license_number: t.license_number,
+            district: t.district || district || 'Hisar',
+            status: t.inspection_status === 'Passed' ? 'Approved' : (t.status || t.inspection_status || 'Pending_LMO'),
+            inspection_status: t.inspection_status || 'Pending',
+            instrument_type: t.instrument_type || 'Class III Weighing Scale',
+            latitude: t.latitude ? parseFloat(t.latitude) : 28.8955,
+            longitude: t.longitude ? parseFloat(t.longitude) : 76.6066,
+            assigned_officer: t.assigned_officer,
+            inspection_image_url: t.inspection_image_url,
+          }));
 
-          if (!trError && trData && trData.length > 0) {
+          if (district && district.toLowerCase() !== 'all') {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            loaded = trData.map((t: any) => ({
-              id: String(t.id || t.license_number),
-              trader_name: t.shop_name || t.trader_name,
-              shop_name: t.shop_name || t.trader_name,
-              owner_name: t.owner_name,
-              license_number: t.license_number,
-              district: t.district || district,
-              status: t.status || (t.inspection_status === 'Passed' ? 'Approved' : t.inspection_status || 'Pending_LMO'),
-              inspection_status: t.inspection_status || (t.status === 'Approved' ? 'Passed' : 'Pending'),
-              instrument_type: t.instrument_type,
-              latitude: t.latitude,
-              longitude: t.longitude,
-            }));
+            rows = rows.filter((t: any) => (t.district || 'Hisar').toLowerCase() === district.toLowerCase());
           }
+          loaded = rows as TraderRecord[];
         }
       } catch (sbErr) {
-        console.warn('Direct Supabase fetch note:', sbErr);
+        console.warn('Direct Supabase traders fetch note:', sbErr);
       }
     }
 
@@ -724,19 +710,7 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
         {
           event: '*',
           schema: 'public',
-          table: 'traders_list',
-          filter: 'status=eq.Pending_LMO',
-        },
-        () => {
-          fetchDistrictData(userDistrict, officerId, officerEmail, activeTab);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'traders_list',
+          table: 'traders',
         },
         () => {
           fetchDistrictData(userDistrict, officerId, officerEmail, activeTab);
@@ -879,13 +853,15 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
     try {
       if (supabase) {
         const { error } = await supabase
-          .from('traders_list')
+          .from('traders')
           .update({
-            status: updatedStatus,
+            assigned_officer: officerEmail || officerName || 'LMO Inspector',
+            inspection_status: 'Pending',
+            updated_at: new Date().toISOString(),
           })
           .eq('license_number', targetLicense)
           .select();
-        if (error) console.error('Error updating schedule in traders_list:', error);
+        if (error) console.error('Error updating schedule in traders:', error);
       }
       showToast(`Field inspection scheduled for ${schedulingTrader.shop_name || targetLicense} on ${scheduleDate} (${scheduleSlot})`);
     } catch {
@@ -925,13 +901,25 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
     try {
       if (supabase) {
         const { error } = await supabase
-          .from('traders_list')
+          .from('traders')
           .update({
-            status: updatedStatus,
+            inspection_status: 'Passed',
+            updated_at: new Date().toISOString(),
           })
           .eq('license_number', targetLicense)
           .select();
-        if (error) console.error('Error updating verification status in traders_list:', error);
+        if (error) console.error('Error updating verification status in traders:', error);
+
+        // Also record in inspections table
+        try {
+          await supabase.from('inspections').insert({
+            license_number: targetLicense,
+            inspection_status: 'Passed',
+            seal_number: sealCode,
+            notes: verificationNotes || 'Physically inspected and stamped',
+            inspected_at: new Date().toISOString(),
+          });
+        } catch (_) {}
       }
       showToast(`Scale physically verified & stamped! Forwarded to GATC laboratory (Pending_GATC).`);
     } catch {
@@ -1194,7 +1182,7 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
         <div className="bg-white rounded-3xl p-16 text-center border border-slate-200 shadow-xs flex flex-col items-center justify-center gap-3">
           <RefreshCw className="w-7 h-7 text-blue-600 animate-spin" />
           <div className="text-sm font-bold text-slate-700">Loading {userDistrict} jurisdiction applications...</div>
-          <div className="text-xs text-slate-400 font-mono">Executing query: .from(&apos;traders_list&apos;).select(&apos;*&apos;).eq(&apos;district&apos;, &apos;{userDistrict}&apos;)</div>
+          <div className="text-xs text-slate-400 font-mono">Executing query: .from(&apos;traders&apos;).select(&apos;*&apos;).eq(&apos;district&apos;, &apos;{userDistrict}&apos;)</div>
         </div>
       ) : displayedList.length === 0 ? (
         <div className="bg-white rounded-3xl p-16 text-center border border-slate-200 shadow-xs space-y-3">

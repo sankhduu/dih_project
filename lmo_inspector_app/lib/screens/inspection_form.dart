@@ -268,7 +268,7 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
     // 2. Prepare full inspection observation report
     final report = OfflineInspectionReport(
       queueId: 'INSP_${widget.trader.licenseNumber.replaceAll('/', '_')}_${now.millisecondsSinceEpoch}',
-      traderId: widget.trader.id,
+      traderId: widget.trader.id ?? '',
       traderName: widget.trader.traderName,
       licenseNumber: widget.trader.licenseNumber,
       inspectionStatus: _selectedStatus,

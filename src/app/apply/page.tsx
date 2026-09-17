@@ -153,25 +153,21 @@ export default function ApplyPage() {
     const chosenLat = latitude ? parseFloat(latitude) : (defaultCoords[cleanDistrict]?.lat || 28.8955);
     const chosenLng = longitude ? parseFloat(longitude) : (defaultCoords[cleanDistrict]?.lng || 76.6066);
 
-    // Exact payload matching public.traders_list schema
+    // Exact payload matching public.traders schema
     const supabasePayload = {
-      shop_name: traderName.trim(),
       trader_name: traderName.trim(),
       owner_name: ownerName.trim(),
       license_number: generatedLicense,
       latitude: chosenLat,
       longitude: chosenLng,
       instrument_type: instrumentType,
-      status: 'Pending_LMO',
-      district: cleanDistrict,
-      trader_email: userEmail,
-      user_id: userId || undefined,
+      inspection_status: 'Pending',
     };
 
     try {
-      // 1. Direct Supabase insert into traders_list
+      // 1. Direct Supabase insert into traders table
       const { data, error } = await supabase
-        .from('traders_list')
+        .from('traders')
         .insert([supabasePayload])
         .select()
         .single();
@@ -179,7 +175,7 @@ export default function ApplyPage() {
       if (error) {
         console.warn('Supabase direct insert notice:', error.message);
       } else {
-        console.log('✅ Successfully inserted trader application to Supabase traders_list:', data);
+        console.log('✅ Successfully inserted trader application to Supabase traders table:', data);
       }
 
       // 2. Also invoke Next.js POST /api/traders endpoint to guarantee server-side synchronization
@@ -191,6 +187,10 @@ export default function ApplyPage() {
         });
       } catch (apiErr) {
         console.warn('API route sync note:', apiErr);
+      }
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('last_applied_license', generatedLicense);
       }
 
       const finalData = data || supabasePayload;

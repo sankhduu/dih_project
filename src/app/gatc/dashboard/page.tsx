@@ -153,18 +153,27 @@ export default function GatcDashboardPage() {
     message: '',
   });
 
-  // 1. Initial Data Fetch from Supabase traders_list (specifically Pending_GATC rows updated by LMO)
+  // 1. Initial Data Fetch from Supabase traders (specifically Passed/Pending_GATC rows updated by LMO)
   const fetchShops = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('traders_list')
+        .from('traders')
         .select('*')
-        .order('license_number', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (data && !error && data.length > 0) {
         // Exclude pending LMO inspections from GATC dashboard
-        const gatcRelevant = data.filter((d) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mappedData = data.map((d: any) => ({
+          ...d,
+          shop_name: d.trader_name || d.shop_name,
+          status: d.inspection_status === 'Passed' ? 'Verified' : d.inspection_status === 'Failed' ? 'Rejected' : (d.status || d.inspection_status || 'Pending'),
+          inspection_status: d.inspection_status || 'Pending',
+          district: d.district || 'Hisar',
+        }));
+
+        const gatcRelevant = mappedData.filter((d) => {
           const st = (d.status || '').toLowerCase();
           return st !== 'pending_lmo' && st !== 'pending_inspection' && st !== 'pending';
         });
@@ -183,7 +192,7 @@ export default function GatcDashboardPage() {
         setShops(SEED_SHOPS);
       }
     } catch (err) {
-      console.warn('Note on Supabase traders_list fetch:', err);
+      console.warn('Note on Supabase traders fetch:', err);
       setShops(SEED_SHOPS);
     } finally {
       setLoading(false);
@@ -200,10 +209,19 @@ export default function GatcDashboardPage() {
       .channel('gatc-realtime-listener')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'traders_list' },
+        { event: '*', schema: 'public', table: 'traders' },
         (payload) => {
-          const updatedRow = (payload.new || payload.old) as TraderRecord;
-          if (!updatedRow) return;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const raw: any = payload.new || payload.old;
+          if (!raw) return;
+
+          const updatedRow: TraderRecord = {
+            ...raw,
+            shop_name: raw.trader_name || raw.shop_name,
+            status: raw.inspection_status === 'Passed' ? 'Verified' : raw.inspection_status === 'Failed' ? 'Rejected' : (raw.status || raw.inspection_status || 'Pending'),
+            inspection_status: raw.inspection_status || 'Pending',
+            district: raw.district || 'Hisar',
+          };
 
           // Exclude Pending_LMO from GATC portal
           const statusNorm = (updatedRow.status || '').toLowerCase();
@@ -337,14 +355,15 @@ export default function GatcDashboardPage() {
       const signatureHash = `GATC-SIG-${licCode}-8F92A9C4-${randomHex}`;
       const signedTimestamp = new Date().toISOString();
 
-      // Write to Supabase traders_list targeting license_number
+      // Write to Supabase traders targeting license_number
       const shopId = shop.id || shop.license_number;
       const targetLicense = (shop.license_number || shop.id || '').trim();
       try {
         const { error } = await supabase
-          .from('traders_list')
+          .from('traders')
           .update({
-            status: 'Verified',
+            inspection_status: 'Passed',
+            updated_at: signedTimestamp,
           })
           .eq('license_number', targetLicense)
           .select();
@@ -402,9 +421,10 @@ export default function GatcDashboardPage() {
 
     try {
       const { error } = await supabase
-        .from('traders_list')
+        .from('traders')
         .update({
-          status: 'Rejected',
+          inspection_status: 'Failed',
+          updated_at: nowIso,
         })
         .eq('license_number', targetLicense)
         .select();

@@ -79,7 +79,7 @@ interface TraderRecord {
     async function fetchTrader() {
       setIsLoadingTrader(true);
       try {
-        const res = await fetch(`http://localhost:5000/api/traders/${encodeURIComponent(rawCertId)}`);
+        const res = await fetch(`/api/traders/${encodeURIComponent(rawCertId)}`);
         if (res.ok) {
           const json = await res.json();
           if (json.success && json.data && isMounted) {
@@ -159,7 +159,7 @@ interface TraderRecord {
 
     try {
       const res = await fetch(
-        `http://localhost:5000/api/certificate/${encodeURIComponent(rawCertId)}/verify-seal`,
+        `/api/certificate/${encodeURIComponent(rawCertId)}/verify-seal`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -203,7 +203,7 @@ interface TraderRecord {
     setIsSubmittingComplaint(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/complaints', {
+      const res = await fetch('/api/complaints', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

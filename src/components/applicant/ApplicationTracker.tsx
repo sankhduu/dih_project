@@ -106,7 +106,7 @@ export function ApplicationTracker() {
   const [isCertModalOpen, setIsCertModalOpen] = useState<boolean>(false);
   const [isReapplying, setIsReapplying] = useState<boolean>(false);
 
-  // Fetch all applications from Supabase traders_list (strictly filtered by trader_email)
+  // Fetch all applications from Supabase traders
   const fetchApplications = async () => {
     try {
       setIsLoading(true);
@@ -127,20 +127,30 @@ export function ApplicationTracker() {
         console.warn('Auth check error in tracker:', authErr);
       }
 
-      // 2. Query strictly filtered by trader_email
-      let query = supabase.from('traders_list').select('*');
+      // 2. Query traders table
+      let query = supabase.from('traders').select('*');
       if (userEmail) {
-        query = query.eq('trader_email', userEmail);
+        const userPrefix = userEmail.split('@')[0];
+        query = query.or(`owner_name.ilike.%${userPrefix}%,trader_name.ilike.%${userPrefix}%`);
       }
 
-      const { data, error } = await query.order('license_number', { ascending: false });
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (data && data.length > 0 && !error) {
-        setTraders(data as TraderRecord[]);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mapped = data.map((d: any) => ({
+          ...d,
+          shop_name: d.trader_name || d.shop_name,
+          status: d.inspection_status === 'Passed' ? 'Approved' : (d.status || d.inspection_status || 'Pending_LMO'),
+          inspection_status: d.inspection_status || 'Pending',
+          district: d.district || 'Hisar',
+        })) as TraderRecord[];
+
+        setTraders(mapped);
         setSelectedApp((prev) => {
-          if (!prev) return data[0] as TraderRecord;
-          const matched = data.find((d) => d.id === prev.id || d.license_number === prev.license_number);
-          return (matched || data[0]) as TraderRecord;
+          if (!prev) return mapped[0];
+          const matched = mapped.find((d) => d.id === prev.id || d.license_number === prev.license_number);
+          return matched || mapped[0];
         });
       } else {
         // Filter fallback by user email if available
@@ -152,7 +162,7 @@ export function ApplicationTracker() {
         setSelectedApp(initialList[0]);
       }
     } catch (err) {
-      console.warn('Error querying traders_list for tracker:', err);
+      console.warn('Error querying traders for tracker:', err);
       setTraders(FALLBACK_TRADERS);
       setSelectedApp(FALLBACK_TRADERS[0]);
     } finally {
@@ -163,12 +173,12 @@ export function ApplicationTracker() {
   useEffect(() => {
     fetchApplications();
 
-    // Supabase Realtime Listener on traders_list
+    // Supabase Realtime Listener on traders table
     const channel = supabase
       .channel('tracker-realtime-lifecycle')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'traders_list' },
+        { event: '*', schema: 'public', table: 'traders' },
         async (payload) => {
           const updatedRow = (payload.new || payload.old) as TraderRecord;
           if (!updatedRow) return;
@@ -224,9 +234,9 @@ export function ApplicationTracker() {
     try {
       const targetLic = (selectedApp?.license_number || appId).trim();
       await supabase
-        .from('traders_list')
+        .from('traders')
         .update({
-          status: 'Pending_LMO',
+          inspection_status: 'Pending',
         })
         .eq('license_number', targetLic);
 
