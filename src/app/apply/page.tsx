@@ -29,7 +29,7 @@ export default function ApplyPage() {
 
   // Form State - Pre-filled with logged in Trader's profile info
   const [traderName, setTraderName] = useState(currentUser.businessName || 'Apex Supermarket & Grocery Store');
-  const [ownerName, setOwnerName] = useState(currentUser.fullName || 'Ramesh Kumar');
+  const [ownerName, setOwnerName] = useState(currentUser.fullName || 'Mohan Lal');
   const [instrumentType, setInstrumentType] = useState('Electronic Counter Scale (Class III)');
   const [capacity, setCapacity] = useState('30 kg (e = 5 g)');
   const [address, setAddress] = useState(currentUser.address || 'Shop No. 14, Main Market, Hisar, Haryana - 125001');
@@ -340,7 +340,7 @@ export default function ApplyPage() {
                       required
                       value={ownerName}
                       onChange={(e) => setOwnerName(e.target.value)}
-                      placeholder="e.g. Ramesh Kumar"
+                      placeholder="e.g. Mohan Lal"
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#002B49] focus:bg-white transition-all"
                     />
                   </div>

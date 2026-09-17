@@ -1,10 +1,10 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'api_service.dart';
 
 /// Service managing the 'Golden Path Demo Mode' for hackathon presentations.
 /// When [isDemoMode] is true:
 /// - Supabase & HTTP network fetch calls are completely bypassed.
-/// - Returns 2 dummy traders: 'Ramesh Kumar' (Pending) and 'Suresh' (Passed).
+/// - Returns 2 dummy traders: 'Mohan Lal' (Pending) and 'Suresh' (Passed).
 /// - Submission simulates a 2-second CircularProgressIndicator, shows success,
 ///   and updates in-memory state to 'Passed'.
 class DemoService {
@@ -18,8 +18,8 @@ class DemoService {
     return [
       Trader(
         id: 'demo-trader-1',
-        traderName: 'Ramesh Kumar',
-        ownerName: 'Ramesh Kumar',
+        traderName: 'Mohan Lal',
+        ownerName: 'Mohan Lal',
         licenseNumber: 'HR-LMO-2026-0042',
         instrumentType: 'Electronic Counter Scale (Class III)',
         inspectionStatus: 'Pending',

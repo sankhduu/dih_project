@@ -21,33 +21,35 @@ export function GATCDashboard() {
 
   // Task 1: Demo State Setup
   const [isDemoMode, setIsDemoMode] = useState<boolean>(true);
-  const [isRameshCertified, setIsRameshCertified] = useState<boolean>(false);
+  const [isMohanCertified, setIsMohanCertified] = useState<boolean>(false);
+  const isRameshCertified = isMohanCertified;
+  const setIsRameshCertified = setIsMohanCertified;
   const [approvingStepText, setApprovingStepText] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const rameshDemoApp: Application = {
-    id: 'demo-app-ramesh-0042',
+  const mohanDemoApp: Application = {
+    id: 'demo-app-mohan-0042',
     applicationNumber: 'HR-LMO-2026-0042',
-    applicantId: 'trader-ramesh-0042',
+    applicantId: 'trader-mohan-0042',
     applicant: {
-      id: 'trader-ramesh-0042',
-      email: 'ramesh.kumar@trader.in',
-      fullName: 'Ramesh Kumar',
+      id: 'trader-mohan-0042',
+      email: 'trader@demo.com',
+      fullName: 'Mohan Lal',
       mobile: '+91 98123 45678',
       role: 'APPLICANT',
-      businessName: 'Ramesh Kumar General Store',
+      businessName: 'Mohan Kirana Store',
       businessType: 'RETAIL',
       address: 'Shop No. 14, Main Market, Hansi Road, Hisar - 125001',
       district: 'Hisar',
       state: 'Haryana',
       pinCode: '125001',
     },
-    instrumentId: 'inst-ramesh-0042',
+    instrumentId: 'inst-mohan-0042',
     instrument: {
-      id: 'inst-ramesh-0042',
-      ownerId: 'trader-ramesh-0042',
-      ownerName: 'Ramesh Kumar',
-      businessName: 'Ramesh Kumar General Store',
+      id: 'inst-mohan-0042',
+      ownerId: 'trader-mohan-0042',
+      ownerName: 'Mohan Lal',
+      businessName: 'Mohan Kirana Store',
       category: 'ELECTRONIC_COUNTER_SCALE',
       categoryName: 'Electronic Counter Scale (Class III)',
       accuracyClass: 'CLASS_III',
@@ -61,16 +63,18 @@ export function GATCDashboard() {
       district: 'Hisar',
       state: 'Haryana',
       pinCode: '125001',
-      status: isRameshCertified ? 'ACTIVE_VERIFIED' : 'PENDING_VERIFICATION',
+      status: isMohanCertified ? 'ACTIVE_VERIFIED' : 'PENDING_VERIFICATION',
       createdAt: new Date().toISOString(),
     },
     applicationType: 'PERIODIC_REVERIFICATION',
     jurisdictionId: 'JUR-HISAR',
-    status: isRameshCertified ? 'APPROVED' : 'SUBMITTED',
+    status: isMohanCertified ? 'APPROVED' : 'SUBMITTED',
     assignedOfficerRole: 'GATC',
     assignedOfficerId: currentUser.id || 'GATC-CENTRAL-01',
     submittedAt: new Date().toISOString(),
   };
+
+  const rameshDemoApp = mohanDemoApp;
 
   const baseApps = applications.filter(
     (a) => a.assignedOfficerId === currentUser.id || a.assignedOfficerRole === 'GATC'
@@ -183,7 +187,7 @@ export function GATCDashboard() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {gatcApps.map((app) => {
-                const isRamesh = app.applicationNumber.includes('0042') || app.applicant.fullName.toLowerCase().includes('ramesh');
+                const isRamesh = app.applicationNumber.includes('0042') || app.applicant.fullName.toLowerCase().includes('mohan') || app.applicant.fullName.toLowerCase().includes('ramesh');
                 return (
                   <tr key={app.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 font-mono font-bold text-slate-900">{app.applicationNumber}</td>
@@ -267,8 +271,8 @@ export function GATCDashboard() {
       {/* Task 3: Secret Reset for Next Judge (Bottom Right of screen/component) */}
       <div
         onClick={() => {
-          setIsRameshCertified(false);
-          setToastMessage('✨ Demo Queue Reset (Ramesh Kumar restored to Pending)');
+          setIsMohanCertified(false);
+          setToastMessage('✨ Demo Queue Reset (Mohan Lal restored to Pending)');
           setTimeout(() => setToastMessage(null), 3000);
         }}
         className="fixed bottom-1 right-1 w-8 h-8 opacity-0 hover:opacity-10 cursor-default z-50 text-[8px] text-slate-700 select-none flex items-center justify-center"

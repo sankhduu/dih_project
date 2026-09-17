@@ -999,11 +999,11 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                 className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 transition-all text-left cursor-pointer"
               >
                 <div className="w-8 h-8 rounded-full bg-[#002B49] text-white flex items-center justify-center text-xs font-bold shadow-xs">
-                  {((isTraderUser ? 'Ramesh Kumar' : (displayedUser.fullName || displayedUser.email || 'O'))).charAt(0).toUpperCase()}
+                  {((isTraderUser ? 'Mohan Lal' : (displayedUser.fullName || displayedUser.email || 'O'))).charAt(0).toUpperCase()}
                 </div>
                 <div className="hidden lg:block text-left">
                   <div className="text-xs font-bold text-slate-900 leading-tight truncate max-w-[150px]">
-                    {isTraderUser ? 'Ramesh Kumar' : (displayedUser.fullName || 'Officer')}
+                    {isTraderUser ? 'Mohan Lal' : (displayedUser.fullName || 'Officer')}
                   </div>
                   <div className="text-[10px] text-slate-500 font-medium truncate max-w-[150px]">
                     {isTraderUser
@@ -1020,11 +1020,11 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                   {/* Officer / User Profile Header */}
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-full bg-[#002B49] text-white flex items-center justify-center text-sm font-black shrink-0 shadow-xs">
-                      {((isTraderUser ? 'Ramesh Kumar' : (displayedUser.fullName || 'O'))).charAt(0).toUpperCase()}
+                      {((isTraderUser ? 'Mohan Lal' : (displayedUser.fullName || 'O'))).charAt(0).toUpperCase()}
                     </div>
                     <div className="overflow-hidden flex-1 min-w-0">
                       <p className="text-xs font-black text-slate-900 truncate">
-                        {isTraderUser ? 'Ramesh Kumar' : displayedUser.fullName}
+                        {isTraderUser ? 'Mohan Lal' : displayedUser.fullName}
                       </p>
                       <p className="text-[10px] text-slate-500 font-mono truncate">
                         {isTraderUser ? (displayedUser.email || 'trader@demo.com') : displayedUser.email}
@@ -1054,7 +1054,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="text-slate-500 font-medium">Enterprise:</span>
                       <span className="font-semibold text-slate-700 truncate max-w-[150px]">
-                        {isTraderUser ? 'Ramesh Kumar' : (displayedUser.businessName || 'Trading Enterprise')}
+                        {isTraderUser ? 'Mohan Kirana Store' : (displayedUser.businessName || 'Trading Enterprise')}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-200/50">

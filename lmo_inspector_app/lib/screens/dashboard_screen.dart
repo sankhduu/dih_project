@@ -37,7 +37,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Task 2: State Variables for Reset & Demo Simulation
   int refreshCount = 0;
-  bool isRameshApproved = false;
+  bool isMohanApproved = false;
+  bool get isRameshApproved => isMohanApproved;
+  set isRameshApproved(bool val) => isMohanApproved = val;
 
   @override
   void initState() {
@@ -79,18 +81,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) {
         setState(() {
           var list = DemoService.dummyTradersMap;
-          if (isRameshApproved) {
+          if (isMohanApproved) {
             list = list.where((t) {
               final name = (t['trader_name'] ?? t['shop_name'] ?? '').toString().toLowerCase();
               final lic = (t['license_number'] ?? '').toString().toLowerCase();
-              return !name.contains('ramesh') && !lic.contains('0042');
+              return !name.contains('mohan') && !name.contains('ramesh') && !lic.contains('0042');
             }).toList();
           }
           _liveTraders = list;
           _isLoading = false;
           _errorMessage = null;
         });
-        debugPrint('🌟 [Demo Mode] Supabase fetch bypassed. Loaded ${_liveTraders.length} dummy traders (isRameshApproved: $isRameshApproved).');
+        debugPrint('🌟 [Demo Mode] Supabase fetch bypassed. Loaded ${_liveTraders.length} dummy traders (isMohanApproved: $isMohanApproved).');
       }
       return;
     }
@@ -177,10 +179,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   /// Task 1: The 'Fake' Geolocation UI on Approve
-  /// When the user clicks 'Approve' on Ramesh Kumar's card, show loading dialog:
+  /// When the user clicks 'Approve' on Mohan Lal's card, show loading dialog:
   /// 'Fetching Hardware-Locked GPS Coordinates...' -> 1.5s -> 'Verifying Inspector Location...' -> 1.0s -> execute approval.
   Future<void> _simulateFakeGeolocationApproval(Map<String, dynamic> trader) async {
-    final traderName = (trader['trader_name'] ?? trader['shop_name'] ?? 'Ramesh Kumar').toString();
+    final traderName = (trader['trader_name'] ?? trader['shop_name'] ?? 'Mohan Lal').toString();
     final licenseNumber = (trader['license_number'] ?? 'HR-LMO-2026-0042').toString();
 
     String dialogMessage = 'Fetching Hardware-Locked GPS Coordinates...';
@@ -255,14 +257,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Task 3: The Disappear Logic
     if (mounted) {
       setState(() {
-        isRameshApproved = true;
+        isMohanApproved = true;
         DemoService.markAsPassed(licenseNumber);
         DemoService.markAsPassed(traderName);
-        // Remove 'Ramesh Kumar' from the local UI list so it visibly disappears
+        // Remove 'Mohan Lal' from the local UI list so it visibly disappears
         _liveTraders.removeWhere((t) {
           final n = (t['trader_name'] ?? t['shop_name'] ?? '').toString().toLowerCase();
           final l = (t['license_number'] ?? '').toString().toLowerCase();
-          return n.contains('ramesh') || l.contains('0042') || l == licenseNumber.toLowerCase();
+          return n.contains('mohan') || n.contains('ramesh') || l.contains('0042') || l == licenseNumber.toLowerCase();
         });
       });
 
@@ -291,26 +293,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Task 4: The 3-Refresh Reappear Logic
   Future<void> _onPullToRefresh() async {
     refreshCount++;
-    debugPrint('🔄 Pull-to-Refresh triggered (Count: $refreshCount, isRameshApproved: $isRameshApproved)');
+    debugPrint('🔄 Pull-to-Refresh triggered (Count: $refreshCount, isMohanApproved: $isMohanApproved)');
 
-    // If isRameshApproved == true AND refreshCount >= 3, reset and re-insert Ramesh Kumar
-    if (isRameshApproved && refreshCount >= 3) {
+    // If isMohanApproved == true AND refreshCount >= 3, reset and re-insert Mohan Lal
+    if (isMohanApproved && refreshCount >= 3) {
       refreshCount = 0;
-      isRameshApproved = false;
+      isMohanApproved = false;
 
-      final rameshData = {
+      final mohanData = {
         'id': 'demo-trader-1',
-        'trader_name': 'Ramesh Kumar',
-        'shop_name': 'Ramesh Kumar',
-        'owner_name': 'Ramesh Kumar',
+        'trader_name': 'Mohan Lal',
+        'shop_name': 'Mohan Kirana Store',
+        'owner_name': 'Mohan Lal',
         'license_number': 'HR-LMO-2026-0042',
         'instrument_type': 'Electronic Counter Scale (Class III)',
         'inspection_status': 'Pending',
         'status': 'Pending',
         'latitude': 28.8955,
         'longitude': 76.6066,
-        'district': 'Hisar',
-        'assigned_officer': 'LMO Inspector (Hisar)',
+        'district': 'Rohtak',
+        'assigned_officer': 'LMO Inspector (Rohtak)',
         'created_at': '2026-09-15T10:30:00Z',
       };
 
@@ -319,11 +321,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final alreadyExists = _liveTraders.any((t) {
         final lic = (t['license_number'] ?? '').toString().toLowerCase();
         final name = (t['trader_name'] ?? t['shop_name'] ?? '').toString().toLowerCase();
-        return lic.contains('0042') || name.contains('ramesh');
+        return lic.contains('0042') || name.contains('mohan') || name.contains('ramesh');
       });
 
       if (!alreadyExists) {
-        _liveTraders.insert(0, rameshData);
+        _liveTraders.insert(0, mohanData);
       }
 
       if (mounted) {
@@ -336,7 +338,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '✨ Ramesh Kumar reappeared in queue! (3-refresh reset)',
+                    '✨ Mohan Lal reappeared in queue! (3-refresh reset)',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -350,14 +352,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
 
-    if (isRameshApproved) {
+    if (isMohanApproved) {
       await Future.delayed(const Duration(milliseconds: 500));
       if (mounted) {
         setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Queue refreshed ($refreshCount/3 pulls to restore Ramesh Kumar)',
+              'Queue refreshed ($refreshCount/3 pulls to restore Mohan Lal)',
               style: const TextStyle(fontSize: 12),
             ),
             duration: const Duration(seconds: 1),
@@ -652,13 +654,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
               );
 
               if (result == true) {
-                if (traderName.toLowerCase().contains('ramesh') || licenseNumber.contains('0042')) {
+                if (traderName.toLowerCase().contains('mohan') || traderName.toLowerCase().contains('ramesh') || licenseNumber.contains('0042')) {
                   setState(() {
-                    isRameshApproved = true;
+                    isMohanApproved = true;
                     _liveTraders.removeWhere((t) {
                       final n = (t['trader_name'] ?? t['shop_name'] ?? '').toString().toLowerCase();
                       final l = (t['license_number'] ?? '').toString().toLowerCase();
-                      return n.contains('ramesh') || l.contains('0042');
+                      return n.contains('mohan') || n.contains('ramesh') || l.contains('0042');
                     });
                   });
                 } else {

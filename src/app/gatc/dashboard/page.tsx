@@ -39,10 +39,10 @@ import {
   Download,
 } from 'lucide-react';
 
-const RAMESH_KUMAR_DUMMY: TraderRecord = {
-  id: 'DEMO-RAMESH-0042',
-  shop_name: 'Ramesh Kumar General Store',
-  owner_name: 'Ramesh Kumar',
+const MOHAN_LAL_DUMMY: TraderRecord = {
+  id: 'DEMO-MOHAN-0042',
+  shop_name: 'Mohan Kirana Store',
+  owner_name: 'Mohan Lal',
   license_number: 'HR-LMO-2026-0042',
   district: 'Hisar',
   status: 'Pending_GATC',
@@ -58,6 +58,8 @@ const RAMESH_KUMAR_DUMMY: TraderRecord = {
   lmo_id: 'officer.hisar@gov.in',
   updated_at: new Date().toISOString(),
 };
+
+const RAMESH_KUMAR_DUMMY = MOHAN_LAL_DUMMY;
 
 const SEED_SHOPS: TraderRecord[] = [
   {
@@ -145,22 +147,24 @@ export default function GatcDashboardPage() {
 
   // Task 1: Golden Path Demo Mode State (Pitch Presentation)
   const [isDemoMode, setIsDemoMode] = useState<boolean>(true);
-  const [isRameshCertified, setIsRameshCertified] = useState<boolean>(false);
+  const [isMohanCertified, setIsMohanCertified] = useState<boolean>(false);
+  const isRameshCertified = isMohanCertified;
+  const setIsRameshCertified = setIsMohanCertified;
   const [approvingStepText, setApprovingStepText] = useState<string | null>(null);
 
   // Helper to generate demo shops list
   const getDemoShops = (certified: boolean): TraderRecord[] => {
-    const ramesh: TraderRecord = {
-      ...RAMESH_KUMAR_DUMMY,
+    const mohan: TraderRecord = {
+      ...MOHAN_LAL_DUMMY,
       status: certified ? 'Approved' : 'Pending_GATC',
       inspection_status: 'Passed',
       digital_signature: certified ? 'SHA256-GATC-SEC9-8F92A9C4-HR0042' : undefined,
       signed_at: certified ? new Date().toISOString() : undefined,
     };
-    return [ramesh, ...SEED_SHOPS.filter((s) => s.license_number !== 'HR-LMO-2026-0042')];
+    return [mohan, ...SEED_SHOPS.filter((s) => s.license_number !== 'HR-LMO-2026-0042')];
   };
 
-  // Master Data State (Initialized to Demo Shops containing Ramesh Kumar)
+  // Master Data State (Initialized to Demo Shops containing Mohan Lal)
   const [shops, setShops] = useState<TraderRecord[]>(() => getDemoShops(false));
   const [loading, setLoading] = useState<boolean>(false);
   const [flashingRowId, setFlashingRowId] = useState<string | null>(null);
@@ -225,6 +229,7 @@ export default function GatcDashboardPage() {
         const isTarget =
           s.id === shop.id ||
           s.license_number === shop.license_number ||
+          s.shop_name.toLowerCase().includes('mohan') ||
           s.shop_name.toLowerCase().includes('ramesh');
         if (isTarget) {
           return {
@@ -1115,7 +1120,7 @@ export default function GatcDashboardPage() {
                                   <>
                                     <button
                                       onClick={() => {
-                                        if (isDemoMode && (shop.shop_name.toLowerCase().includes('ramesh') || shop.license_number.includes('0042'))) {
+                                        if (isDemoMode && (shop.shop_name.toLowerCase().includes('mohan') || shop.shop_name.toLowerCase().includes('ramesh') || shop.license_number.includes('0042'))) {
                                           handleFakeApprove(shop);
                                         } else {
                                           handleDigitallySignAndApprove(shop);
@@ -1124,7 +1129,7 @@ export default function GatcDashboardPage() {
                                       disabled={approvingStepText !== null}
                                       className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs hover:shadow-md transition-all cursor-pointer disabled:opacity-75"
                                     >
-                                      {approvingStepText && (shop.shop_name.toLowerCase().includes('ramesh') || shop.license_number.includes('0042')) ? (
+                                      {approvingStepText && (shop.shop_name.toLowerCase().includes('mohan') || shop.shop_name.toLowerCase().includes('ramesh') || shop.license_number.includes('0042')) ? (
                                         <>
                                           <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin" />
                                           <span>{approvingStepText}</span>
@@ -1270,18 +1275,18 @@ export default function GatcDashboardPage() {
         {/* Task 3: Secret Reset for Next Judge (Bottom Right of Footer) */}
         <div
           onClick={() => {
-            setIsRameshCertified(false);
+            setIsMohanCertified(false);
             setSelectedStatus('Pending_GATC');
             setSyncToast({
               visible: true,
               title: '✨ Demo Queue Reset',
-              message: 'Ramesh Kumar restored to Pending_GATC queue for the next judge demo.',
+              message: 'Mohan Lal restored to Pending_GATC queue for the next judge demo.',
               type: 'success',
             });
             setTimeout(() => setSyncToast((prev) => ({ ...prev, visible: false })), 3000);
           }}
           onDoubleClick={() => {
-            setIsRameshCertified(false);
+            setIsMohanCertified(false);
             setSelectedStatus('Pending_GATC');
           }}
           className="absolute bottom-2 right-2 opacity-0 hover:opacity-10 cursor-default select-none text-[8px] text-slate-800 p-1 z-40"
@@ -1294,18 +1299,18 @@ export default function GatcDashboardPage() {
       {/* Screen Corner Secret Reset Target (Bottom-Right Viewport) */}
       <div
         onClick={() => {
-          setIsRameshCertified(false);
+          setIsMohanCertified(false);
           setSelectedStatus('Pending_GATC');
           setSyncToast({
             visible: true,
             title: '✨ Demo Queue Reset',
-            message: 'Ramesh Kumar restored to Pending_GATC queue for the next judge demo.',
+            message: 'Mohan Lal restored to Pending_GATC queue for the next judge demo.',
             type: 'success',
           });
           setTimeout(() => setSyncToast((prev) => ({ ...prev, visible: false })), 3000);
         }}
         onDoubleClick={() => {
-          setIsRameshCertified(false);
+          setIsMohanCertified(false);
           setSelectedStatus('Pending_GATC');
         }}
         className="fixed bottom-0 right-0 w-8 h-8 opacity-0 hover:opacity-10 cursor-default z-50 select-none flex items-center justify-center text-[10px] text-slate-600"
@@ -1357,7 +1362,7 @@ export default function GatcDashboardPage() {
                 </div>
                 <div>
                   <span className="text-[10px] font-bold uppercase text-slate-400 block">Proprietor</span>
-                  <span className="font-semibold text-slate-800">{selectedReviewShop.owner_name || 'Ramesh Kumar'}</span>
+                  <span className="font-semibold text-slate-800">{selectedReviewShop.owner_name || 'Mohan Lal'}</span>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold uppercase text-slate-400 block">Scale Specs</span>
@@ -1541,7 +1546,7 @@ export default function GatcDashboardPage() {
 
                 <button
                   onClick={() => {
-                    if (isDemoMode && (selectedReviewShop.shop_name.toLowerCase().includes('ramesh') || selectedReviewShop.license_number.includes('0042'))) {
+                    if (isDemoMode && (selectedReviewShop.shop_name.toLowerCase().includes('mohan') || selectedReviewShop.shop_name.toLowerCase().includes('ramesh') || selectedReviewShop.license_number.includes('0042'))) {
                       handleFakeApprove(selectedReviewShop);
                     } else {
                       handleDigitallySignAndApprove(selectedReviewShop);

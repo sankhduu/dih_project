@@ -23,10 +23,10 @@ import Link from 'next/link';
 // Fallback seed data if database is empty or offline
 const FALLBACK_TRADERS: TraderRecord[] = [
   {
-    id: 'RAM-TR-001',
-    shop_name: 'Ramesh Kumar',
-    trader_name: 'Ramesh Kumar',
-    owner_name: 'Ramesh Kumar',
+    id: 'MOH-TR-001',
+    shop_name: 'Mohan Kirana Store',
+    trader_name: 'Mohan Kirana Store',
+    owner_name: 'Mohan Lal',
     trader_email: 'trader@demo.com',
     license_number: 'HR-LMO-ROH-2026-089',
     district: 'Rohtak',
