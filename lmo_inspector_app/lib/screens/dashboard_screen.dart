@@ -35,6 +35,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _errorMessage;
   StreamSubscription<List<Map<String, dynamic>>>? _streamSubscription;
 
+  // Task 2: State Variables for Reset & Demo Simulation
+  int refreshCount = 0;
+  bool isRameshApproved = false;
+
   @override
   void initState() {
     super.initState();
@@ -74,11 +78,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (DemoService.isDemoMode) {
       if (mounted) {
         setState(() {
-          _liveTraders = DemoService.dummyTradersMap;
+          var list = DemoService.dummyTradersMap;
+          if (isRameshApproved) {
+            list = list.where((t) {
+              final name = (t['trader_name'] ?? t['shop_name'] ?? '').toString().toLowerCase();
+              final lic = (t['license_number'] ?? '').toString().toLowerCase();
+              return !name.contains('ramesh') && !lic.contains('0042');
+            }).toList();
+          }
+          _liveTraders = list;
           _isLoading = false;
           _errorMessage = null;
         });
-        debugPrint('🌟 [Demo Mode] Supabase fetch bypassed. Loaded ${_liveTraders.length} dummy traders.');
+        debugPrint('🌟 [Demo Mode] Supabase fetch bypassed. Loaded ${_liveTraders.length} dummy traders (isRameshApproved: $isRameshApproved).');
       }
       return;
     }
@@ -162,6 +174,201 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       debugPrint('⚠️ [LMO Dashboard] Realtime setup notice: $e');
     }
+  }
+
+  /// Task 1: The 'Fake' Geolocation UI on Approve
+  /// When the user clicks 'Approve' on Ramesh Kumar's card, show loading dialog:
+  /// 'Fetching Hardware-Locked GPS Coordinates...' -> 1.5s -> 'Verifying Inspector Location...' -> 1.0s -> execute approval.
+  Future<void> _simulateFakeGeolocationApproval(Map<String, dynamic> trader) async {
+    final traderName = (trader['trader_name'] ?? trader['shop_name'] ?? 'Ramesh Kumar').toString();
+    final licenseNumber = (trader['license_number'] ?? 'HR-LMO-2026-0042').toString();
+
+    String dialogMessage = 'Fetching Hardware-Locked GPS Coordinates...';
+    String dialogSubtext = 'Locking GNSS satellite fix (28.8955° N, 76.6066° E)...';
+
+    StateSetter? updateDialogState;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return PopScope(
+          canPop: false,
+          child: StatefulBuilder(
+            builder: (context, setDialogState) {
+              updateDialogState = setDialogState;
+              return AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                content: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(
+                        color: primaryNavy,
+                        strokeWidth: 3,
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        dialogMessage,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: primaryNavy,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        dialogSubtext,
+                        style: const TextStyle(fontSize: 11, color: Colors.black54),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    // Wait for 1.5 seconds
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    // Change text to 'Verifying Inspector Location...'
+    if (mounted && updateDialogState != null) {
+      updateDialogState!(() {
+        dialogMessage = 'Verifying Inspector Location...';
+        dialogSubtext = 'Geofence match: Shop premises confirmed (within 15m tolerance)';
+      });
+    }
+
+    // Wait 1 second
+    await Future.delayed(const Duration(seconds: 1));
+
+    // Close loading dialog
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
+
+    // Task 3: The Disappear Logic
+    if (mounted) {
+      setState(() {
+        isRameshApproved = true;
+        DemoService.markAsPassed(licenseNumber);
+        DemoService.markAsPassed(traderName);
+        // Remove 'Ramesh Kumar' from the local UI list so it visibly disappears
+        _liveTraders.removeWhere((t) {
+          final n = (t['trader_name'] ?? t['shop_name'] ?? '').toString().toLowerCase();
+          final l = (t['license_number'] ?? '').toString().toLowerCase();
+          return n.contains('ramesh') || l.contains('0042') || l == licenseNumber.toLowerCase();
+        });
+      });
+
+      // Show success SnackBar
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.verified_user_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Inspection Synced Successfully! Location Verified.',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: emeraldGreen,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  /// Task 4: The 3-Refresh Reappear Logic
+  Future<void> _onPullToRefresh() async {
+    refreshCount++;
+    debugPrint('🔄 Pull-to-Refresh triggered (Count: $refreshCount, isRameshApproved: $isRameshApproved)');
+
+    // If isRameshApproved == true AND refreshCount >= 3, reset and re-insert Ramesh Kumar
+    if (isRameshApproved && refreshCount >= 3) {
+      refreshCount = 0;
+      isRameshApproved = false;
+
+      final rameshData = {
+        'id': 'demo-trader-1',
+        'trader_name': 'Ramesh Kumar',
+        'shop_name': 'Ramesh Kumar',
+        'owner_name': 'Ramesh Kumar',
+        'license_number': 'HR-LMO-2026-0042',
+        'instrument_type': 'Electronic Counter Scale (Class III)',
+        'inspection_status': 'Pending',
+        'status': 'Pending',
+        'latitude': 28.8955,
+        'longitude': 76.6066,
+        'district': 'Hisar',
+        'assigned_officer': 'LMO Inspector (Hisar)',
+        'created_at': '2026-09-15T10:30:00Z',
+      };
+
+      DemoService.reset();
+
+      final alreadyExists = _liveTraders.any((t) {
+        final lic = (t['license_number'] ?? '').toString().toLowerCase();
+        final name = (t['trader_name'] ?? t['shop_name'] ?? '').toString().toLowerCase();
+        return lic.contains('0042') || name.contains('ramesh');
+      });
+
+      if (!alreadyExists) {
+        _liveTraders.insert(0, rameshData);
+      }
+
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.auto_awesome, color: Colors.amber, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '✨ Ramesh Kumar reappeared in queue! (3-refresh reset)',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: primaryNavy,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (isRameshApproved) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Queue refreshed ($refreshCount/3 pulls to restore Ramesh Kumar)',
+              style: const TextStyle(fontSize: 12),
+            ),
+            duration: const Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
+    await _fetchLiveTraders();
   }
 
   Future<void> _handleLogout() async {
@@ -418,6 +625,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final complaintsCount = (trader['complaints_count'] ?? 0) as int;
 
         final bool isSavedOffline = OfflineSyncService().isSavedOffline(licenseNumber);
+        final bool isPassed = (trader['inspection_status'] ?? trader['status'] ?? '').toString().trim().toLowerCase() == 'passed';
 
         return Card(
           elevation: 1.5,
@@ -444,7 +652,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
               );
 
               if (result == true) {
-                await _fetchLiveTraders();
+                if (traderName.toLowerCase().contains('ramesh') || licenseNumber.contains('0042')) {
+                  setState(() {
+                    isRameshApproved = true;
+                    _liveTraders.removeWhere((t) {
+                      final n = (t['trader_name'] ?? t['shop_name'] ?? '').toString().toLowerCase();
+                      final l = (t['license_number'] ?? '').toString().toLowerCase();
+                      return n.contains('ramesh') || l.contains('0042');
+                    });
+                  });
+                } else {
+                  await _fetchLiveTraders();
+                }
               }
             },
             child: Padding(
@@ -690,6 +909,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ],
                     ],
                   ),
+
+                  // Task 1: Direct 'Approve' button on pending trader card
+                  if (!isPassed) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () => _simulateFakeGeolocationApproval(trader),
+                          icon: const Icon(Icons.check_circle_outline, size: 16),
+                          label: const Text(
+                            'Approve',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: emeraldGreen,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            elevation: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -808,7 +1056,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh Queue',
-            onPressed: _fetchLiveTraders,
+            onPressed: _onPullToRefresh,
           ),
           IconButton(
             icon: const Icon(Icons.logout),
@@ -823,7 +1071,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _buildDistrictFilterBar(),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: _fetchLiveTraders,
+              onRefresh: _onPullToRefresh,
               color: primaryNavy,
               child: _isLoading && _liveTraders.isEmpty
                   ? const Center(child: CircularProgressIndicator())

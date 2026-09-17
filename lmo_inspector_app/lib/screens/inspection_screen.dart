@@ -314,49 +314,67 @@ class _InspectionScreenState extends State<InspectionScreen> {
         _isSubmitting = true;
       });
 
-      // 1. Show CircularProgressIndicator dialog for 2 seconds
+      // 1. Show simulated Geolocation dialog: 1.5s Fetching -> 1.0s Verifying
+      String dialogMsg = 'Fetching Hardware-Locked GPS Coordinates...';
+      String dialogSub = 'Locking GNSS satellite fix (28.8955° N, 76.6066° E)...';
+      StateSetter? updateDlgState;
+
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) => const PopScope(
+        builder: (ctx) => PopScope(
           canPop: false,
-          child: Center(
-            child: Card(
-              elevation: 8,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(
-                      color: Color(0xFF002B49),
-                      strokeWidth: 3,
-                    ),
-                    SizedBox(height: 18),
-                    Text(
-                      'Submitting Inspection...',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
+          child: StatefulBuilder(
+            builder: (context, setDlgState) {
+              updateDlgState = setDlgState;
+              return AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                content: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(
                         color: Color(0xFF002B49),
+                        strokeWidth: 3,
                       ),
-                    ),
-                    SizedBox(height: 6),
-                    Text(
-                      'Golden Path Demo Mode • Instant Verification',
-                      style: TextStyle(fontSize: 11, color: Colors.black54),
-                    ),
-                  ],
+                      const SizedBox(height: 20),
+                      Text(
+                        dialogMsg,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF002B49),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        dialogSub,
+                        style: const TextStyle(fontSize: 11, color: Colors.black54),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       );
 
-      // Wait exactly 2 seconds
-      await Future.delayed(const Duration(seconds: 2));
+      // Wait 1.5 seconds
+      await Future.delayed(const Duration(milliseconds: 1500));
+
+      if (mounted && updateDlgState != null) {
+        updateDlgState!(() {
+          dialogMsg = 'Verifying Inspector Location...';
+          dialogSub = 'Geofence match: Shop premises confirmed (within 15m tolerance)';
+        });
+      }
+
+      // Wait 1.0 second
+      await Future.delayed(const Duration(seconds: 1));
 
       // Dismiss progress dialog
       if (mounted && Navigator.canPop(context)) {
