@@ -55,11 +55,11 @@ export const MOCK_JURISDICTIONS: Jurisdiction[] = [
 export const MOCK_USERS: UserProfile[] = [
   {
     id: 'USR-APP-001',
-    fullName: 'Ramesh Kumar (Trader)',
+    fullName: 'Ramesh Kumar',
     email: 'ramesh.kumar@apexretail.in',
     mobile: '+91-98101-23456',
     role: 'APPLICANT',
-    businessName: 'Sharma Kirana & General Store',
+    businessName: 'Ramesh Kumar',
     businessType: 'RETAIL',
     gstin: '07AAAAA0000A1Z5',
     address: 'Booth 12, Main Market, Model Town, Rohtak',

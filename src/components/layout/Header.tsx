@@ -999,15 +999,16 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                 className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 transition-all text-left cursor-pointer"
               >
                 <div className="w-8 h-8 rounded-full bg-[#002B49] text-white flex items-center justify-center text-xs font-bold shadow-xs">
-                  {(displayedUser.fullName || displayedUser.email || 'O').charAt(0).toUpperCase()}
+                  {((isTraderUser ? 'Ramesh Kumar' : (displayedUser.fullName || displayedUser.email || 'O'))).charAt(0).toUpperCase()}
                 </div>
                 <div className="hidden lg:block text-left">
                   <div className="text-xs font-bold text-slate-900 leading-tight truncate max-w-[150px]">
-                    {displayedUser.fullName || 'Officer'}
+                    {isTraderUser ? 'Ramesh Kumar' : (displayedUser.fullName || 'Officer')}
                   </div>
                   <div className="text-[10px] text-slate-500 font-medium truncate max-w-[150px]">
-                    {displayedUser.district ? `${displayedUser.district} • ` : ''}
-                    {currentRoleInfo.label.split('(')[0].trim()}
+                    {isTraderUser
+                      ? 'Rohtak - Trader'
+                      : `${displayedUser.district ? `${displayedUser.district} • ` : ''}${currentRoleInfo.label.split('(')[0].trim()}`}
                   </div>
                 </div>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
@@ -1019,30 +1020,30 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                   {/* Officer / User Profile Header */}
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-full bg-[#002B49] text-white flex items-center justify-center text-sm font-black shrink-0 shadow-xs">
-                      {(displayedUser.fullName || 'O').charAt(0).toUpperCase()}
+                      {((isTraderUser ? 'Ramesh Kumar' : (displayedUser.fullName || 'O'))).charAt(0).toUpperCase()}
                     </div>
                     <div className="overflow-hidden flex-1 min-w-0">
                       <p className="text-xs font-black text-slate-900 truncate">
-                        {displayedUser.fullName}
+                        {isTraderUser ? 'Ramesh Kumar' : displayedUser.fullName}
                       </p>
                       <p className="text-[10px] text-slate-500 font-mono truncate">
-                        {displayedUser.email}
+                        {isTraderUser ? (displayedUser.email || 'trader@demo.com') : displayedUser.email}
                       </p>
                       <span className="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                        {currentRoleInfo.label}
+                        {isTraderUser ? 'Rohtak - Trader' : currentRoleInfo.label}
                       </span>
                     </div>
                   </div>
 
                   {/* Official Credentials & Jurisdiction Details */}
                   <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/70 space-y-1.5 text-xs">
-                    {displayedUser.district && (
+                    {(isTraderUser || displayedUser.district) && (
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-slate-500 font-medium">Assigned Jurisdiction:</span>
-                        <span className="font-bold text-slate-800">{displayedUser.district} District, Haryana</span>
+                        <span className="text-slate-500 font-medium">{isTraderUser ? 'Location:' : 'Assigned Jurisdiction:'}</span>
+                        <span className="font-bold text-slate-800">{isTraderUser ? 'Rohtak, Haryana' : `${displayedUser.district} District, Haryana`}</span>
                       </div>
                     )}
-                    {displayedUser.designation && (
+                    {!isTraderUser && displayedUser.designation && (
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-slate-500 font-medium">Official Title:</span>
                         <span className="font-semibold text-slate-700 text-right truncate max-w-[150px]">
@@ -1050,19 +1051,17 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                         </span>
                       </div>
                     )}
-                    {displayedUser.businessName && (
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-slate-500 font-medium">Enterprise:</span>
-                        <span className="font-semibold text-slate-700 truncate max-w-[150px]">
-                          {displayedUser.businessName}
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-500 font-medium">Enterprise:</span>
+                      <span className="font-semibold text-slate-700 truncate max-w-[150px]">
+                        {isTraderUser ? 'Ramesh Kumar' : (displayedUser.businessName || 'Trading Enterprise')}
+                      </span>
+                    </div>
                     <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-200/50">
                       <span className="text-slate-500 font-medium">Session Security:</span>
                       <span className="font-bold text-emerald-700 flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                        Verified Officer
+                        {isTraderUser ? 'Verified Trader' : 'Verified Officer'}
                       </span>
                     </div>
                   </div>
@@ -1088,7 +1087,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                     >
                       <span className="flex items-center gap-2">
                         <LogOut className="w-4 h-4" />
-                        <span>Sign Out Officer Session</span>
+                        <span>{isTraderUser ? 'Sign Out Trader Session' : 'Sign Out Officer Session'}</span>
                       </span>
                       <span className="text-[10px] text-rose-400 font-medium">Exit</span>
                     </button>

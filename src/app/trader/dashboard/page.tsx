@@ -163,7 +163,7 @@ export default function TraderDashboardPage() {
             ...raw,
             shop_name: raw.trader_name || raw.shop_name,
             status: raw.inspection_status || raw.status || 'Pending',
-            district: raw.district || 'Hisar',
+            district: raw.district || 'Rohtak',
           };
           setTraderShop(record);
           setHasApplied(true);
@@ -359,7 +359,7 @@ export default function TraderDashboardPage() {
 
       drawField('Trader Name:', traderName, startY);
       drawField('License Number:', licenseNumber, startY + rowH);
-      drawField('Jurisdiction District:', traderShop?.district || 'Hisar, Haryana', startY + rowH * 2);
+      drawField('Jurisdiction District:', traderShop?.district || 'Rohtak, Haryana', startY + rowH * 2);
       drawField('Instrument Specification:', traderShop?.instrument_type || 'Electronic Tabletop Scale (Class III)', startY + rowH * 3);
       drawField('Verification Status:', 'Verified', startY + rowH * 4);
       drawField('Authorized by DOCA:', 'Authorized by DOCA', startY + rowH * 5);
@@ -606,7 +606,7 @@ export default function TraderDashboardPage() {
                   <span>UIDAI Aadhaar Verified</span>
                 </span>
                 <span>•</span>
-                <span>{traderShop?.district || currentUser.district || 'Hisar'}, Haryana</span>
+                <span>{traderShop?.district || currentUser.district || 'Rohtak'}, Haryana</span>
               </div>
             </div>
 
