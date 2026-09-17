@@ -40,7 +40,8 @@ const SEED_LMO_TRADERS: TraderRecord[] = [
     owner_name: 'Suresh Chand Bishnoi',
     license_number: 'HR-LMO-HIS-2026-081',
     district: 'Hisar',
-    status: 'Pending_Inspection',
+    status: 'Pending_LMO',
+    inspection_status: 'Pending_LMO',
     address: 'Shop 14, Anaj Mandi, Hisar, Haryana - 125001',
     instrument_type: 'Platform Weighing Scale (500 kg)',
     capacity: '500 kg / e=50g',
@@ -121,7 +122,8 @@ const SEED_LMO_TRADERS: TraderRecord[] = [
     owner_name: 'Ramesh Kumar Sharma',
     license_number: 'HR-LMO-ROH-2026-042',
     district: 'Rohtak',
-    status: 'Pending_Inspection',
+    status: 'Pending_LMO',
+    inspection_status: 'Pending_LMO',
     address: 'Booth 12, Main Market, Model Town, Rohtak - 124001',
     instrument_type: 'Electronic Tabletop Scale (30 kg Class III)',
     capacity: '30 kg / e=2g',
@@ -200,7 +202,8 @@ const SEED_LMO_TRADERS: TraderRecord[] = [
     owner_name: 'Ramesh Kumar',
     license_number: 'DL-LMO-SOU-2026-001',
     district: 'South Delhi',
-    status: 'Pending_Inspection',
+    status: 'Pending_LMO',
+    inspection_status: 'Pending_LMO',
     address: 'Shop 14, Main Market, Hauz Khas, New Delhi - 110016',
     instrument_type: 'Electronic Counter Scale (Class III)',
     capacity: '30 kg / e=5g',
@@ -281,7 +284,8 @@ const SEED_LMO_TRADERS: TraderRecord[] = [
     owner_name: 'Amitabh Sen',
     license_number: 'HR-LMO-GGN-2026-001',
     district: 'Gurugram',
-    status: 'Pending_Inspection',
+    status: 'Pending_LMO',
+    inspection_status: 'Pending_LMO',
     address: 'DLF Phase 2, Sector 25, Gurugram - 122002',
     instrument_type: 'Electronic Counter Scale (Class III)',
     capacity: '30 kg / e=5g',
@@ -366,8 +370,8 @@ function generateDistrictSeed(dist: string): TraderRecord[] {
       owner_name: 'Rajesh Kumar',
       license_number: `HR-LMO-${code}-2026-101`,
       district: dist,
-      status: 'Pending_Inspection',
-      inspection_status: 'Pending',
+      status: 'Pending_LMO',
+      inspection_status: 'Pending_LMO',
       address: `Shop 14, Main Commercial Complex, ${dist}`,
       instrument_type: 'Electronic Counter Scale (Class III)',
       capacity: '30 kg / e=5g',
@@ -463,6 +467,7 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
   const handleTabChange = (t: LmoTabType) => {
     setActiveTab(t);
     onTabChange?.(t);
+    fetchDistrictData(userDistrict, officerId, officerEmail, t);
   };
 
   // 2. User Profile & District Jurisdiction State
@@ -502,19 +507,34 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
   // Strictly filter Supabase query so it ONLY fetches rows matching
   // the logged-in LMO's specific ID or assigned District. Never show all users!
   // -------------------------------------------------------------
-  const fetchDistrictData = async (district: string, offId?: string, offEmail?: string) => {
+  const fetchDistrictData = async (
+    district: string,
+    offId?: string,
+    offEmail?: string,
+    tab: LmoTabType = activeTab
+  ) => {
     setLoading(true);
     let loaded: TraderRecord[] = [];
     const activeOfficerId = offId || officerId;
     const activeOfficerEmail = offEmail || officerEmail;
 
-    // 1. Direct Supabase Query (Filtered strictly by logged-in LMO ID or assigned District)
+    // 1. Direct Supabase Query (Filtered strictly by assigned District and status 'Pending_LMO' for inspection queue)
     if (supabase) {
       try {
         let listQuery = supabase.from('traders_list').select('*');
         if (district && district.toLowerCase() !== 'all') {
-          listQuery = listQuery.ilike('district', `%${district}%`);
+          listQuery = listQuery.eq('district', district);
         }
+        if (tab === 'inspection_queue') {
+          listQuery = listQuery.eq('status', 'Pending_LMO');
+        } else if (tab === 'visit_schedule') {
+          listQuery = listQuery.or('status.eq.Scheduled,status.eq.visit_scheduled');
+        } else if (tab === 'verified') {
+          listQuery = listQuery.eq('status', 'Verified');
+        } else if (tab === 'certificates_issued') {
+          listQuery = listQuery.or('status.eq.Approved,status.eq.Verified');
+        }
+
         const { data: listData, error: listError } = await listQuery.order('license_number', { ascending: false });
 
         if (!listError && listData && listData.length > 0) {
@@ -530,6 +550,9 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
           } else {
             trQuery = trQuery.eq('district', district);
           }
+          if (tab === 'inspection_queue') {
+            trQuery = trQuery.eq('status', 'Pending_LMO');
+          }
           const { data: trData, error: trError } = await trQuery;
 
           if (!trError && trData && trData.length > 0) {
@@ -541,7 +564,7 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
               owner_name: t.owner_name,
               license_number: t.license_number,
               district: t.district || district,
-              status: t.status || (t.inspection_status === 'Passed' ? 'Approved' : t.inspection_status || 'Pending_Inspection'),
+              status: t.status || (t.inspection_status === 'Passed' ? 'Approved' : t.inspection_status || 'Pending_LMO'),
               inspection_status: t.inspection_status || (t.status === 'Approved' ? 'Passed' : 'Pending'),
               instrument_type: t.instrument_type,
               latitude: t.latitude,
@@ -554,14 +577,15 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
       }
     }
 
-    // 2. Express API Query (/api/traders?district=...)
+    // 2. Express API Query (/api/traders?district=...&status=Pending_LMO)
     if (loaded.length === 0) {
       try {
-        let apiUrl = `${API_BASE_URL}/api/traders?district=${encodeURIComponent(district)}`;
+        const statusParam = tab === 'inspection_queue' ? '&status=Pending_LMO' : '';
+        let apiUrl = `${API_BASE_URL}/api/traders?district=${encodeURIComponent(district)}${statusParam}`;
         if (typeof window !== 'undefined') {
           const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
           if (!isLocalhost && (apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1'))) {
-            apiUrl = `/api/traders?district=${encodeURIComponent(district)}`;
+            apiUrl = `/api/traders?district=${encodeURIComponent(district)}${statusParam}`;
           }
         }
 
@@ -577,7 +601,7 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
               owner_name: t.owner_name,
               license_number: t.license_number,
               district: t.district || district,
-              status: t.status || (t.inspection_status === 'Passed' ? 'Approved' : t.inspection_status || 'Pending_Inspection'),
+              status: t.status || (t.inspection_status === 'Passed' ? 'Approved' : t.inspection_status || 'Pending_LMO'),
               inspection_status: t.inspection_status || (t.status === 'Approved' ? 'Passed' : 'Pending'),
               instrument_type: t.instrument_type,
               latitude: t.latitude,
@@ -688,7 +712,7 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
   }, [currentUser]);
 
   // -------------------------------------------------------------
-  // Step 3: Realtime Supabase Subscription (Filtered by District)
+  // Step 3: Realtime Supabase Subscription (Filtered by District & status: Pending_LMO)
   // -------------------------------------------------------------
   useEffect(() => {
     if (!supabase || !userDistrict) return;
@@ -697,23 +721,39 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
       .channel(`lmo-realtime-officer-${userDistrict}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'traders_list' },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'traders_list',
+          filter: 'status=eq.Pending_LMO',
+        },
         () => {
-          fetchDistrictData(userDistrict);
+          fetchDistrictData(userDistrict, officerId, officerEmail, activeTab);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'traders_list',
+        },
+        () => {
+          fetchDistrictData(userDistrict, officerId, officerEmail, activeTab);
         }
       )
       .subscribe();
 
     // Heartbeat poll every 4s to guarantee real-time updates without page refresh
     const pollInterval = setInterval(() => {
-      fetchDistrictData(userDistrict);
+      fetchDistrictData(userDistrict, officerId, officerEmail, activeTab);
     }, 4000);
 
     return () => {
       supabase.removeChannel(channel);
       clearInterval(pollInterval);
     };
-  }, [userDistrict]);
+  }, [userDistrict, activeTab, officerId, officerEmail]);
 
   // -------------------------------------------------------------
   // Step 4: Category Filtering for the 4 Interactive Tabs

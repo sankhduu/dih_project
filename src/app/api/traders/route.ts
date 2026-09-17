@@ -199,6 +199,7 @@ export async function POST(req: NextRequest) {
         : targetStatus;
 
     const newRecord = {
+      shop_name: trader_name.trim(),
       trader_name: trader_name.trim(),
       owner_name: owner_name.trim(),
       license_number: generatedLicense.trim(),

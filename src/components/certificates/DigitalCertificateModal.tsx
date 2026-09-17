@@ -20,6 +20,8 @@ export interface TraderRecord {
   trader_name?: string;
   owner_name?: string;
   trader_email?: string;
+  phone?: string;
+  user_id?: string;
   license_number: string;
   district?: string;
   status?: string;

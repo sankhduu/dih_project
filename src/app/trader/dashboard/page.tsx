@@ -27,33 +27,18 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-const DEFAULT_TRADER_SHOP: TraderRecord = {
-  id: 'MOH-TR-001',
-  shop_name: 'Mohan Kirana Store',
-  trader_name: 'Mohan Kirana Store',
-  owner_name: 'Mohan Lal',
-  trader_email: 'trader@demo.com',
-  license_number: 'HR-LMO-ROH-2026-089',
-  district: 'Rohtak',
-  status: 'Pending_LMO',
-  address: 'Shop No. 5, Main Market, Model Town, Rohtak - 124001',
-  instrument_type: 'Electronic Counter Scale (Class III)',
-  capacity: '30 kg (e = 5 g)',
-  make_model: 'Essae DS-852 Tabletop',
-  latitude: 28.8955,
-  longitude: 76.6066,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-};
-
 export default function TraderDashboardPage() {
   const router = useRouter();
   const { currentUser, instruments, applications, certificates } = useMetrologyStore();
   const [authorized, setAuthorized] = useState(false);
   const [sessionEmail, setSessionEmail] = useState<string>('');
+  const [sessionUserId, setSessionUserId] = useState<string>('');
+  const [sessionPhone, setSessionPhone] = useState<string>('');
 
-  // Real-time Trader Shop State
-  const [traderShop, setTraderShop] = useState<TraderRecord>(DEFAULT_TRADER_SHOP);
+  // Real-time Trader Shop State (No hardcoded default; defaults to null)
+  const [traderShop, setTraderShop] = useState<TraderRecord | null>(null);
+  const [hasApplied, setHasApplied] = useState<boolean>(false);
+  const [isLoadingRecord, setIsLoadingRecord] = useState<boolean>(true);
   const [isCertificateOpen, setIsCertificateOpen] = useState<boolean>(false);
   const [justApproved, setJustApproved] = useState<boolean>(false);
   const [isReapplying, setIsReapplying] = useState<boolean>(false);
@@ -73,6 +58,8 @@ export default function TraderDashboardPage() {
 
         let effectiveRole = currentUser.role;
         let effectiveEmail = currentUser.email || '';
+        let effectiveUserId = currentUser.id || '';
+        let effectivePhone = currentUser.mobile || '';
 
         if (storedUser) {
           try {
@@ -83,11 +70,19 @@ export default function TraderDashboardPage() {
             if (parsed?.email) {
               effectiveEmail = parsed.email;
             }
+            if (parsed?.id) {
+              effectiveUserId = parsed.id;
+            }
+            if (parsed?.phone) {
+              effectivePhone = parsed.phone;
+            }
           } catch {
             // ignore
           }
         } else if (session?.user) {
           effectiveEmail = session.user.email || effectiveEmail;
+          effectiveUserId = session.user.id || effectiveUserId;
+          effectivePhone = session.user.phone || effectivePhone;
           const metaRole = session.user.user_metadata?.role;
           if (metaRole) {
             effectiveRole = normalizeUserRole(metaRole).storeRole;
@@ -95,6 +90,8 @@ export default function TraderDashboardPage() {
         }
 
         setSessionEmail(effectiveEmail);
+        setSessionUserId(effectiveUserId);
+        setSessionPhone(effectivePhone);
 
         // If user is NOT a Trader / Applicant, kick them to login
         if (effectiveRole !== 'APPLICANT') {
@@ -112,27 +109,47 @@ export default function TraderDashboardPage() {
     checkTraderAuth();
   }, [router, currentUser.role, currentUser.email]);
 
-  // 2. Fetch Initial Trader Record from Supabase traders_list (strictly filtered by trader_email)
+  // 2. Fetch Initial Trader Record from Supabase traders_list (strictly filtered by current user identifier)
   useEffect(() => {
     async function fetchTraderRecord() {
       try {
+        let effectiveUserId = sessionUserId || currentUser.id || '';
         let effectiveEmail = sessionEmail || currentUser.email || '';
-        if (!effectiveEmail) {
+        let effectivePhone = sessionPhone || currentUser.mobile || '';
+
+        if (!effectiveUserId && !effectiveEmail) {
           const { data: authData } = await supabase.auth.getUser();
-          if (authData?.user?.email) {
-            effectiveEmail = authData.user.email;
+          if (authData?.user) {
+            effectiveUserId = authData.user.id || '';
+            effectiveEmail = authData.user.email || '';
+            effectivePhone = authData.user.phone || '';
           } else {
             const { data: sessionData } = await supabase.auth.getSession();
-            if (sessionData?.session?.user?.email) {
-              effectiveEmail = sessionData.session.user.email;
+            if (sessionData?.session?.user) {
+              effectiveUserId = sessionData.session.user.id || '';
+              effectiveEmail = sessionData.session.user.email || '';
+              effectivePhone = sessionData.session.user.phone || '';
             }
           }
         }
 
+        // Must query the traders_list table strictly filtered by the currently logged-in user's identifier
         let query = supabase.from('traders_list').select('*');
-        if (effectiveEmail) {
+        if (effectiveUserId && effectiveEmail) {
+          query = query.or(`user_id.eq.${effectiveUserId},trader_email.eq.${effectiveEmail}`);
+        } else if (effectiveUserId) {
+          query = query.eq('user_id', effectiveUserId);
+        } else if (effectiveEmail) {
           query = query.eq('trader_email', effectiveEmail);
+        } else if (effectivePhone) {
+          query = query.eq('phone', effectivePhone);
+        } else {
+          setTraderShop(null);
+          setHasApplied(false);
+          setIsLoadingRecord(false);
+          return;
         }
+
         const { data, error } = await query
           .order('license_number', { ascending: false })
           .limit(1)
@@ -140,11 +157,18 @@ export default function TraderDashboardPage() {
 
         if (data && !error) {
           setTraderShop(data as TraderRecord);
-        } else if (effectiveEmail === 'trader@demo.com' || !effectiveEmail) {
-          setTraderShop(DEFAULT_TRADER_SHOP);
+          setHasApplied(true);
+        } else {
+          // If no row is found for this specific user, explicitly set state to show the 'Apply Now' form
+          setTraderShop(null);
+          setHasApplied(false);
         }
       } catch (err) {
         console.warn('Error fetching trader record from Supabase:', err);
+        setTraderShop(null);
+        setHasApplied(false);
+      } finally {
+        setIsLoadingRecord(false);
       }
     }
 
@@ -153,7 +177,7 @@ export default function TraderDashboardPage() {
     // Heartbeat polling every 4 seconds to guarantee UI updates without refresh
     const pollTimer = setInterval(fetchTraderRecord, 4000);
     return () => clearInterval(pollTimer);
-  }, [sessionEmail, currentUser.email]);
+  }, [sessionEmail, sessionUserId, sessionPhone, currentUser.email, currentUser.id]);
 
   // 3. Supabase Realtime Listener (Listening to LMO and GATC actions, and new Applications)
   useEffect(() => {
@@ -167,23 +191,35 @@ export default function TraderDashboardPage() {
           if (!updatedRow) return;
 
           const targetEmail = sessionEmail || currentUser.email;
-          if (targetEmail && updatedRow.trader_email && updatedRow.trader_email !== targetEmail) {
+          const targetId = sessionUserId || currentUser.id;
+          const targetPhone = sessionPhone || currentUser.mobile;
+
+          const matchesUser =
+            (targetId && updatedRow.user_id === targetId) ||
+            (targetEmail && updatedRow.trader_email === targetEmail) ||
+            (targetPhone && updatedRow.phone === targetPhone);
+
+          if (!matchesUser) return;
+
+          if (payload.eventType === 'DELETE') {
+            setTraderShop(null);
+            setHasApplied(false);
             return;
           }
 
           setTraderShop((prev) => {
-            // If this is a newly inserted application, immediately switch tracker to it
+            setHasApplied(true);
             if (payload.eventType === 'INSERT') {
               return { ...updatedRow };
             }
-            if (!prev.id || prev.id === updatedRow.id || prev.license_number === updatedRow.license_number) {
-              const wasNotVerified = (prev.status || '').toLowerCase() !== 'verified';
+            if (!prev?.id || prev.id === updatedRow.id || prev.license_number === updatedRow.license_number) {
+              const wasNotVerified = (prev?.status || '').toLowerCase() !== 'verified';
               const isNowVerified = (updatedRow.status || '').toLowerCase() === 'verified';
               if (wasNotVerified && isNowVerified) {
                 setJustApproved(true);
                 setTimeout(() => setJustApproved(false), 8000);
               }
-              return { ...prev, ...updatedRow };
+              return { ...(prev || {}), ...updatedRow };
             }
             return prev;
           });
@@ -194,10 +230,11 @@ export default function TraderDashboardPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [sessionEmail, currentUser.email]);
+  }, [sessionEmail, sessionUserId, sessionPhone, currentUser.email, currentUser.id]);
 
   // Handler for Re-Applying when rejected
   const handleReapply = async () => {
+    if (!traderShop) return;
     setIsReapplying(true);
     try {
       const targetLic = (traderShop.license_number || traderShop.id || '').trim();
@@ -211,21 +248,28 @@ export default function TraderDashboardPage() {
           .select();
         if (error) console.error('Error in handleReapply:', error);
       }
-      setTraderShop((prev) => ({
-        ...prev,
-        status: 'Pending_LMO',
-        rejection_reason: undefined,
-        updated_at: new Date().toISOString(),
-      }));
+      setTraderShop((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: 'Pending_LMO',
+              rejection_reason: undefined,
+              updated_at: new Date().toISOString(),
+            }
+          : null
+      );
     } catch (err) {
       console.warn('Error resetting application:', err);
-      // Fallback local update
-      setTraderShop((prev) => ({
-        ...prev,
-        status: 'Pending_LMO',
-        rejection_reason: undefined,
-        updated_at: new Date().toISOString(),
-      }));
+      setTraderShop((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: 'Pending_LMO',
+              rejection_reason: undefined,
+              updated_at: new Date().toISOString(),
+            }
+          : null
+      );
     } finally {
       setIsReapplying(false);
     }
@@ -233,6 +277,7 @@ export default function TraderDashboardPage() {
 
   // Dynamic Certificate Generation & Automatic Download (jsPDF)
   const handleDownloadCertificate = () => {
+    if (!traderShop) return;
     try {
       const doc = new jsPDF({
         orientation: 'portrait',
@@ -241,8 +286,8 @@ export default function TraderDashboardPage() {
       });
 
       const pageWidth = doc.internal.pageSize.getWidth();
-      const traderName = traderShop?.trader_name || traderShop?.shop_name || 'Mohan Kirana Store';
-      const licenseNumber = traderShop?.license_number || 'HR-LMO-ROH-2026-089';
+      const traderName = traderShop?.trader_name || traderShop?.shop_name || 'Commercial Establishment';
+      const licenseNumber = traderShop?.license_number || 'HR-LMO-2026-PENDING';
       const timestamp = new Date().toLocaleString('en-IN', {
         timeZone: 'Asia/Kolkata',
         dateStyle: 'medium',
@@ -393,15 +438,21 @@ export default function TraderDashboardPage() {
     }
   };
 
-  if (!authorized) {
+  if (!authorized || isLoadingRecord) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-sans text-slate-900">
         <div className="p-8 max-w-sm w-full bg-white rounded-3xl border border-slate-200 shadow-xl text-center space-y-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto animate-pulse">
             <Lock className="w-6 h-6" />
           </div>
-          <h3 className="font-extrabold text-slate-900 text-base">Securing Trader Portal</h3>
-          <p className="text-xs text-slate-500">Validating your Trader credentials &amp; session permissions...</p>
+          <h3 className="font-extrabold text-slate-900 text-base">
+            {!authorized ? 'Securing Trader Portal' : 'Checking Application Status'}
+          </h3>
+          <p className="text-xs text-slate-500">
+            {!authorized
+              ? 'Validating your Trader credentials & session permissions...'
+              : 'Verifying registration records with Legal Metrology...'}
+          </p>
         </div>
       </div>
     );
@@ -412,12 +463,15 @@ export default function TraderDashboardPage() {
   );
 
   const displayEmail = sessionEmail || currentUser.email || 'trader@demo.com';
-  const displayName = currentUser.fullName || traderShop?.owner_name || 'Mohan Lal (Proprietor)';
+  const displayName = currentUser.fullName || traderShop?.owner_name || 'Trader Proprietor';
 
-  const rawStatus = (traderShop?.status || 'Pending_LMO').trim();
+  const rawStatus = (traderShop?.status || '').trim();
   const isVerified = rawStatus.toLowerCase() === 'verified';
   const isPendingGatc = rawStatus.toLowerCase() === 'pending_gatc';
-  const isPendingLmo = rawStatus.toLowerCase() === 'pending_lmo' || rawStatus.toLowerCase() === 'pending_inspection' || rawStatus.toLowerCase() === 'pending';
+  const isPendingLmo =
+    rawStatus.toLowerCase() === 'pending_lmo' ||
+    rawStatus.toLowerCase() === 'pending_inspection' ||
+    rawStatus.toLowerCase() === 'pending';
   const isUnderReview = isPendingGatc;
   const isApproved = isVerified || rawStatus.toLowerCase() === 'approved';
   const isRejected = rawStatus.toLowerCase() === 'rejected';
@@ -428,7 +482,7 @@ export default function TraderDashboardPage() {
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Real-time Approval Celebration Toast Banner */}
-        {justApproved && (
+        {justApproved && traderShop && (
           <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-white/20 text-white flex items-center justify-center shrink-0">
@@ -456,7 +510,7 @@ export default function TraderDashboardPage() {
         {/* ========================================================================= */}
         {/* WHEN VERIFIED: GREEN BANNER WITH 'DOWNLOAD CERTIFICATE' BUTTON (ONLY WHEN VERIFIED) */}
         {/* ========================================================================= */}
-        {isVerified && (
+        {isVerified && traderShop && (
           <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-emerald-500 animate-in fade-in duration-300">
             <div className="flex items-center gap-3.5">
               <div className="w-12 h-12 rounded-2xl bg-white/20 text-white flex items-center justify-center shrink-0 shadow-xs">
@@ -490,7 +544,7 @@ export default function TraderDashboardPage() {
         {/* ========================================================================= */}
         {/* WHEN REJECTED: RED BANNER WITH REJECTION REASON & RE-APPLY BUTTON */}
         {/* ========================================================================= */}
-        {isRejected && (
+        {isRejected && traderShop && (
           <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-rose-600 via-rose-700 to-red-800 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-rose-500 animate-in fade-in duration-300">
             <div className="flex items-start gap-3.5">
               <div className="w-12 h-12 rounded-2xl bg-white/20 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
@@ -545,7 +599,7 @@ export default function TraderDashboardPage() {
                 <span>•</span>
                 <span className="flex items-center gap-1">
                   <Building2 className="w-3.5 h-3.5 text-slate-300" />
-                  <span>{traderShop.shop_name || currentUser.businessName || 'Mohan Kirana Store'}</span>
+                  <span>{traderShop?.shop_name || currentUser.businessName || 'Commercial Establishment'}</span>
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1">
@@ -553,7 +607,7 @@ export default function TraderDashboardPage() {
                   <span>UIDAI Aadhaar Verified</span>
                 </span>
                 <span>•</span>
-                <span>{traderShop.district || currentUser.district || 'Rohtak'}, Haryana</span>
+                <span>{traderShop?.district || currentUser.district || 'Hisar'}, Haryana</span>
               </div>
             </div>
 
@@ -570,8 +624,59 @@ export default function TraderDashboardPage() {
         </div>
 
         {/* ========================================================================= */}
-        {/* LIVE APPLICATION TRACKER BAR (MULTI-STEP STEPPER: 1 -> 2 -> 3 -> 4) */}
+        {/* TASK 1: EXPLICIT 'APPLY NOW' SECTION WHEN NO APPLICATION FOUND */}
         {/* ========================================================================= */}
+        {!hasApplied || !traderShop ? (
+          <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-8 sm:p-12 text-center space-y-6">
+            <div className="w-16 h-16 rounded-3xl bg-blue-50 text-blue-700 flex items-center justify-center mx-auto shadow-xs">
+              <Scale className="w-8 h-8" />
+            </div>
+            <div className="max-w-xl mx-auto space-y-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                No Active Verification Application Found
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-black text-slate-900">
+                Register Your Commercial Weighing Scale
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+                Under Section 24 of the Legal Metrology Act, 2009, all commercial weighing and measuring instruments must undergo initial statutory verification and stamping before being put into commercial operation.
+              </p>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Link
+                href="/apply"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-2xl bg-[#002B49] hover:bg-[#003B66] text-white font-extrabold text-sm shadow-md hover:shadow-lg transition-all cursor-pointer"
+              >
+                <PlusCircle className="w-5 h-5 text-amber-400" />
+                <span>Apply Now — Submit Scale for Verification</span>
+                <ArrowRight className="w-4 h-4 text-slate-300" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto pt-6 text-left">
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Step 1: Application</span>
+                <p className="text-xs font-bold text-slate-800">Submit Details</p>
+                <p className="text-[11px] text-slate-500">Enter scale serial number, capacity, and shop GPS coordinates.</p>
+              </div>
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Step 2: Field Inspection</span>
+                <p className="text-xs font-bold text-slate-800">LMO Officer Visit</p>
+                <p className="text-[11px] text-slate-500">On-site verification of MPE tolerance and lead seal stamping.</p>
+              </div>
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Step 3: Verification</span>
+                <p className="text-xs font-bold text-slate-800">Certificate Issued</p>
+                <p className="text-[11px] text-slate-500">Download Schedule IX Form V digital certificate with QR code.</p>
+              </div>
+            </div>
+          </div>
+        ) : (
+        /* ========================================================================= */
+        /* LIVE APPLICATION TRACKER BAR (MULTI-STEP STEPPER: 1 -> 2 -> 3 -> 4) */
+        /* ========================================================================= */
         <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-8 space-y-6 relative overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
             <div className="flex items-center gap-3">
@@ -853,8 +958,9 @@ export default function TraderDashboardPage() {
             </div>
           </div>
         </div>
+      )}
 
-        {/* Metric Cards Grid */}
+      {/* Metric Cards Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
             <div className="text-slate-500 text-xs font-semibold flex items-center justify-between">
@@ -988,7 +1094,7 @@ export default function TraderDashboardPage() {
           )}
 
           <Link
-            href={`/certificate/${traderShop.id || 'ROH-TR-001'}`}
+            href={`/certificate/${traderShop?.license_number || traderShop?.id || 'ROH-TR-001'}`}
             className="p-6 rounded-3xl bg-white border border-slate-200 shadow-xs hover:shadow-md transition-all group flex flex-col justify-between space-y-4"
           >
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center group-hover:scale-110 transition-transform">

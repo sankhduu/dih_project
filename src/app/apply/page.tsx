@@ -32,8 +32,8 @@ export default function ApplyPage() {
   const [ownerName, setOwnerName] = useState(currentUser.fullName || 'Ramesh Kumar');
   const [instrumentType, setInstrumentType] = useState('Electronic Counter Scale (Class III)');
   const [capacity, setCapacity] = useState('30 kg (e = 5 g)');
-  const [address, setAddress] = useState(currentUser.address || 'Shop No. 14, Main Market, Hauz Khas, New Delhi - 110016');
-  const [district, setDistrict] = useState('Rohtak');
+  const [address, setAddress] = useState(currentUser.address || 'Shop No. 14, Main Market, Hisar, Haryana - 125001');
+  const [district, setDistrict] = useState('Hisar');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
 
@@ -115,14 +115,17 @@ export default function ApplyPage() {
 
     // 1. Fetch currently logged-in user's session
     let userEmail = currentUser.email || 'trader@demo.com';
+    let userId = currentUser.id || '';
     try {
       const { data: authData } = await supabase.auth.getUser();
-      if (authData?.user?.email) {
-        userEmail = authData.user.email;
+      if (authData?.user) {
+        if (authData.user.email) userEmail = authData.user.email;
+        if (authData.user.id) userId = authData.user.id;
       } else {
         const { data: sessionData } = await supabase.auth.getSession();
-        if (sessionData?.session?.user?.email) {
-          userEmail = sessionData.session.user.email;
+        if (sessionData?.session?.user) {
+          if (sessionData.session.user.email) userEmail = sessionData.session.user.email;
+          if (sessionData.session.user.id) userId = sessionData.session.user.id;
         }
       }
     } catch (authErr) {
@@ -131,7 +134,8 @@ export default function ApplyPage() {
 
     // Generate authoritative license number matching district code
     const randomFiveDigits = Math.floor(10000 + Math.random() * 90000);
-    const distPrefix = district.toUpperCase().substring(0, 3);
+    const cleanDistrict = (district || 'Hisar').trim();
+    const distPrefix = cleanDistrict.toUpperCase().substring(0, 3);
     const generatedLicense = `HR-LMO-${distPrefix}-2026-${randomFiveDigits}`;
 
     // Standard GPS coordinates per Haryana district
@@ -146,11 +150,12 @@ export default function ApplyPage() {
       Sonipat: { lat: 28.9931, lng: 77.0151 },
     };
 
-    const chosenLat = latitude ? parseFloat(latitude) : (defaultCoords[district]?.lat || 28.8955);
-    const chosenLng = longitude ? parseFloat(longitude) : (defaultCoords[district]?.lng || 76.6066);
+    const chosenLat = latitude ? parseFloat(latitude) : (defaultCoords[cleanDistrict]?.lat || 28.8955);
+    const chosenLng = longitude ? parseFloat(longitude) : (defaultCoords[cleanDistrict]?.lng || 76.6066);
 
     // Exact payload matching public.traders_list schema
     const supabasePayload = {
+      shop_name: traderName.trim(),
       trader_name: traderName.trim(),
       owner_name: ownerName.trim(),
       license_number: generatedLicense,
@@ -158,8 +163,9 @@ export default function ApplyPage() {
       longitude: chosenLng,
       instrument_type: instrumentType,
       status: 'Pending_LMO',
-      district: district,
+      district: cleanDistrict,
       trader_email: userEmail,
+      user_id: userId || undefined,
     };
 
     try {
