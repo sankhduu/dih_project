@@ -7,53 +7,57 @@ import 'offline_sync_service.dart';
 
 /// Data model representing a Trader registered in the Legal Metrology System
 class Trader {
-  final String id;
   final String traderName;
   final String ownerName;
   final String licenseNumber;
   final double? latitude;
   final double? longitude;
-  final String inspectionStatus; // 'Pending_LMO', 'Pending_GATC', 'Verified'
   final String instrumentType;
+  final String status; // 'Pending_LMO', 'Pending_GATC', 'Verified', 'Rejected'
   final String district;
+  final String traderEmail;
 
   Trader({
-    required this.id,
     required this.traderName,
     required this.ownerName,
     required this.licenseNumber,
     this.latitude,
     this.longitude,
-    required this.inspectionStatus,
     required this.instrumentType,
+    required this.status,
     this.district = 'Hisar',
+    this.traderEmail = '',
   });
+
+  // Backward compatibility getters
+  String get id => licenseNumber;
+  String get inspectionStatus => status;
 
   factory Trader.fromJson(Map<String, dynamic> json) {
     return Trader(
-      id: (json['id'] ?? json['license_number'] ?? '').toString(),
-      traderName: json['trader_name'] ?? json['shop_name'] ?? 'Unknown Trader',
-      ownerName: json['owner_name'] ?? 'Proprietor',
-      licenseNumber: json['license_number'] ?? 'LMO/2026/00000',
+      traderName: (json['trader_name'] ?? json['shop_name'] ?? 'Unknown Trader').toString(),
+      ownerName: (json['owner_name'] ?? 'Proprietor').toString(),
+      licenseNumber: (json['license_number'] ?? json['id'] ?? 'LMO/2026/00000').toString(),
       latitude: json['latitude'] != null ? double.tryParse(json['latitude'].toString()) : null,
       longitude: json['longitude'] != null ? double.tryParse(json['longitude'].toString()) : null,
-      inspectionStatus: json['status'] ?? json['inspection_status'] ?? 'Pending_LMO',
-      instrumentType: json['instrument_type'] ?? 'Weighing Scale',
-      district: json['district'] ?? 'Hisar',
+      instrumentType: (json['instrument_type'] ?? 'Weighing Scale').toString(),
+      status: (json['status'] ?? json['inspection_status'] ?? 'Pending_LMO').toString(),
+      district: (json['district'] ?? 'Hisar').toString(),
+      traderEmail: (json['trader_email'] ?? '').toString(),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
       'trader_name': traderName,
       'owner_name': ownerName,
       'license_number': licenseNumber,
       'latitude': latitude,
       'longitude': longitude,
-      'inspection_status': inspectionStatus,
       'instrument_type': instrumentType,
+      'status': status,
       'district': district,
+      'trader_email': traderEmail,
     };
   }
 }
@@ -70,12 +74,12 @@ class ApiService {
 
   /// Fetch all traders with 'Pending_LMO' inspection status with offline-first cache
   Future<List<Trader>> fetchPendingTraders({String? district}) async {
-    // 1. Direct Supabase REST fetch from traders_list
+    // 1. Direct Supabase REST fetch from traders_list matching Pending_LMO
     try {
       var query = Supabase.instance.client
           .from('traders_list')
           .select()
-          .eq('status', 'Pending_LMO');
+          .or('status.eq.Pending_LMO,status.eq.Pending_Inspection,status.eq.Pending');
 
       if (district != null && district.isNotEmpty && district.toLowerCase() != 'all') {
         query = query.ilike('district', '%$district%');
@@ -136,6 +140,21 @@ class ApiService {
           await uploadInspectionImage(report.licenseNumber, File(report.photoPath!));
         }
 
+        // 2. Direct Supabase update on traders_list to Pending_GATC
+        final targetStatus = report.inspectionStatus.trim().isEmpty || report.inspectionStatus == 'Under_Review'
+            ? 'Pending_GATC'
+            : report.inspectionStatus;
+        try {
+          await Supabase.instance.client
+              .from('traders_list')
+              .update({'status': targetStatus})
+              .eq('license_number', report.licenseNumber.trim())
+              .select();
+          debugPrint('✅ Direct Supabase status updated to $targetStatus for ${report.licenseNumber}');
+        } catch (sbErr) {
+          debugPrint('Direct Supabase status update note: $sbErr');
+        }
+
         final uri = Uri.parse('$baseUrl/api/inspections/sync');
         final response = await http
             .post(
@@ -143,7 +162,7 @@ class ApiService {
               headers: {'Content-Type': 'application/json'},
               body: json.encode({
                 'license_number': report.licenseNumber,
-                'inspection_status': report.inspectionStatus,
+                'inspection_status': targetStatus,
                 'gps_coordinates': report.gpsCoordinates,
                 'photo_path': report.photoPath,
                 'seal_number': report.sealNumber,
@@ -197,57 +216,54 @@ class ApiService {
   List<Trader> _getFallbackPendingTraders() {
     return [
       Trader(
-        id: 'LMO-ROH-001',
         traderName: 'Rohtak Sweets & Confectionery',
         ownerName: 'Rahul Sharma',
         licenseNumber: 'LMO-ROH-001',
         latitude: 28.8955,
         longitude: 76.5833,
-        inspectionStatus: 'Pending_LMO',
+        status: 'Pending_LMO',
         instrumentType: 'Class III Electronic Weighing Scale',
         district: 'Rohtak',
+        traderEmail: 'rohtak.sweets@demo.com',
       ),
       Trader(
-        id: 'LMO-HIS-001',
         traderName: 'Mohan Kirana Store',
         ownerName: 'Mohan Lal',
         licenseNumber: 'LMO-HIS-001',
         latitude: 29.1539,
         longitude: 75.7114,
-        inspectionStatus: 'Pending_LMO',
+        status: 'Pending_LMO',
         instrumentType: 'Class III Electronic Table Top Scale',
         district: 'Hisar',
+        traderEmail: 'trader@demo.com',
       ),
       Trader(
-        id: 'LMO/2026/10003',
         traderName: 'Haryana Agro Flour Mill & Grain Depot',
         ownerName: 'Haskell Hahn',
         licenseNumber: 'LMO/2026/10003',
         latitude: 29.391101,
         longitude: 77.227515,
-        inspectionStatus: 'Pending_LMO',
+        status: 'Pending_LMO',
         instrumentType: 'Platform Scale',
         district: 'Panipat',
       ),
       Trader(
-        id: 'LMO/2026/10006',
         traderName: 'Gurugram Cold Storage & Dairy',
         ownerName: 'Mrs. Alysa Bahringer',
         licenseNumber: 'LMO/2026/10006',
         latitude: 28.902579,
         longitude: 76.686301,
-        inspectionStatus: 'Pending_LMO',
+        status: 'Pending_LMO',
         instrumentType: 'Electronic Weighing Scale',
         district: 'Gurugram',
       ),
       Trader(
-        id: 'LMO/2026/10009',
         traderName: 'Runolfsson and Sons Pharma Labs',
         ownerName: 'Vera Leuschke DVM',
         licenseNumber: 'LMO/2026/10009',
         latitude: 29.475476,
         longitude: 76.773539,
-        inspectionStatus: 'Pending_LMO',
+        status: 'Pending_LMO',
         instrumentType: 'Analytical Precision Balance',
         district: 'Karnal',
       ),

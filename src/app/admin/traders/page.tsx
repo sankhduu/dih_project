@@ -211,6 +211,22 @@ export default function AdminTradersPage() {
     fetchTraders();
   }, []);
 
+  // Retrieve auth token from cookies or fallback to LMO token
+  const getAuthHeaders = () => {
+    let token = 'lmo-officer-token-2026';
+    if (typeof document !== 'undefined') {
+      const match = document.cookie.match(/sb-access-token=([^;]+)/);
+      if (match && match[1]) {
+        token = decodeURIComponent(match[1]);
+      }
+    }
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      'x-api-key': 'emapan-secure-officer-key-2026',
+    };
+  };
+
   // Handle Officer Assignment Dropdown Selection
   const handleAssignOfficer = async (licenseNumber: string, traderName: string, officerName: string) => {
     // 1. Optimistic local state update
@@ -220,11 +236,11 @@ export default function AdminTradersPage() {
       )
     );
 
-    // 2. Send PATCH request to Express backend
+    // 2. Send PATCH request to Express backend with Authorization header
     try {
       const res = await fetch(`${API_BASE_URL}/api/traders/${encodeURIComponent(licenseNumber)}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ assigned_officer: officerName }),
       });
 

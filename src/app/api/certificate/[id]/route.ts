@@ -27,10 +27,19 @@ export async function GET(
     if (supabase) {
       try {
         let { data } = await supabase
-          .from('traders')
+          .from('traders_list')
           .select('*')
           .eq('license_number', licenseNumber)
           .maybeSingle();
+
+        if (!data) {
+          const trRes = await supabase
+            .from('traders')
+            .select('*')
+            .eq('license_number', licenseNumber)
+            .maybeSingle();
+          data = trRes.data;
+        }
 
         if (!data) {
           const res = await supabase
@@ -59,14 +68,14 @@ export async function GET(
       );
     }
 
-    // 3. Validation: Passed only
-    const status = (trader.inspection_status || '').toLowerCase();
-    if (status !== 'passed') {
+    // 3. Validation: Passed / Verified / Approved
+    const rawStatus = (trader.status || trader.inspection_status || '').toLowerCase();
+    if (rawStatus !== 'passed' && rawStatus !== 'verified' && rawStatus !== 'approved') {
       return NextResponse.json(
         {
           success: false,
           error: 'Inspection Status Not Passed',
-          message: `Cannot issue certificate for status '${trader.inspection_status}'.`,
+          message: `Cannot issue certificate for status '${trader.status || trader.inspection_status}'.`,
         },
         { status: 400 }
       );

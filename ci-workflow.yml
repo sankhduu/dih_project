@@ -1,0 +1,62 @@
+name: CI / Automated Compliance & Security Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend-security-and-compliance:
+    name: Backend Security, Compliance & Scaling Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Node Dependencies
+        run: npm ci || npm install
+
+      - name: Run Legal Metrology Act 2009 Compliance Test Suite
+        run: npx tsx test-compliance.ts
+
+      - name: Run Gateway Security, RBAC, Rate Limiting & Scaling Test Suite
+        run: node test/security-and-scale.test.js
+
+  flutter-inspector-app:
+    name: Flutter Field Inspector App Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Install Flutter Dependencies
+        working-directory: ./lmo_inspector_app
+        run: flutter pub get
+
+      - name: Run Static Analysis
+        working-directory: ./lmo_inspector_app
+        run: flutter analyze
+
+      - name: Run Automated Flutter Unit & Anti-Spoofing Tests
+        working-directory: ./lmo_inspector_app
+        run: flutter test

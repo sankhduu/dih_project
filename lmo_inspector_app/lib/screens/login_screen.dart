@@ -214,6 +214,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           letterSpacing: 0.5,
                         ),
                       ),
+                      const Text(
+                        'e-Māpan • Field Verification',
+                        style: TextStyle(
+                          color: Color(0xFFFF9933),
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
                       const SizedBox(height: 2),
 
                       const Text(

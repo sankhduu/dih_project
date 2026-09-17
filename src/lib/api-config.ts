@@ -24,6 +24,9 @@ export function getApiBaseUrl(): string {
   }
 
   const raw = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+  if (!raw || raw.includes('localhost') || raw.includes('127.0.0.1')) {
+    return '';
+  }
   return raw.replace(/\/$/, '');
 }
 

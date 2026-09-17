@@ -178,6 +178,8 @@ class OfflineSyncService extends ChangeNotifier {
         'longitude': longitude,
         'photo_path': photoPath,
         'timestamp': DateTime.now().toIso8601String(),
+        'idempotency_key': 'INSP-${licenseNumber.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}-${DateTime.now().millisecondsSinceEpoch}',
+        'device_id': 'LMO-FLUTTER-FIELD-01',
       };
 
       // Remove existing entry for same license to prevent duplicates
@@ -325,7 +327,7 @@ class OfflineSyncService extends ChangeNotifier {
           'status': 'Pending_GATC',
           'latitude': lat,
           'longitude': lng,
-        }).eq('license_number', lic);
+        }).eq('license_number', lic.trim()).select();
 
         successfullySyncedLicenses.add(lic);
         successCount++;
@@ -365,7 +367,7 @@ class OfflineSyncService extends ChangeNotifier {
       try {
         await supabase.from('traders_list').update({
           'status': 'Pending_GATC',
-        }).eq('license_number', report.licenseNumber);
+        }).eq('license_number', report.licenseNumber.trim()).select();
 
         successfullySyncedReports.add(report);
         successCount++;
@@ -373,14 +375,25 @@ class OfflineSyncService extends ChangeNotifier {
         // Fallback to Express sync endpoint if Supabase direct fails
         try {
           final uri = Uri.parse('$targetBaseUrl/api/inspections/sync');
+          final idKey = 'INSP-${report.licenseNumber.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}-${report.queueId}';
           final response = await http.post(
             uri,
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer lmo-officer-token-2026',
+              'x-api-key': 'emapan-secure-officer-key-2026',
+              'idempotency-key': idKey,
+            },
             body: json.encode({
               'license_number': report.licenseNumber,
               'inspection_status': 'Pending_GATC',
+              'idempotency_key': idKey,
+              'device_id': 'LMO-FLUTTER-FIELD-01',
+              'gps_coordinates': report.gpsCoordinates,
+              'seal_number': report.sealNumber,
+              'notes': report.notes,
             }),
-          ).timeout(const Duration(seconds: 4));
+          ).timeout(const Duration(seconds: 5));
           if (response.statusCode == 200 || response.statusCode == 201) {
             successfullySyncedReports.add(report);
             successCount++;

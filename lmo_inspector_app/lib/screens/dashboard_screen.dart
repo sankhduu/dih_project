@@ -68,11 +68,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     try {
-      // Direct live REST fetch from Supabase traders_list table
+      // Direct live REST fetch from Supabase traders_list table matching Pending_LMO (or equivalents)
       final List<dynamic> response = await Supabase.instance.client
           .from('traders_list')
           .select()
-          .eq('status', 'Pending_LMO');
+          .or('status.eq.Pending_LMO,status.eq.Pending_Inspection,status.eq.Pending');
 
       if (mounted) {
         setState(() {
@@ -120,15 +120,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _streamSubscription = Supabase.instance.client
           .from('traders_list')
           .stream(primaryKey: ['license_number'])
-          .eq('status', 'Pending_LMO')
           .listen(
         (data) {
           if (mounted) {
+            final pending = data.where((item) {
+              final s = (item['status'] ?? '').toString().trim().toLowerCase();
+              return s == 'pending_lmo' || s == 'pending_inspection' || s == 'pending';
+            }).toList();
             setState(() {
-              _liveTraders = data;
+              _liveTraders = pending;
               _isLoading = false;
             });
-            debugPrint('⚡ [LMO Dashboard] Realtime stream event: ${data.length} Pending_LMO rows.');
+            debugPrint('⚡ [LMO Dashboard] Realtime stream event: ${pending.length} pending rows.');
           }
         },
         onError: (err) {

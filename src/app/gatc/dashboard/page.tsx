@@ -339,13 +339,16 @@ export default function GatcDashboardPage() {
 
       // Write to Supabase traders_list targeting license_number
       const shopId = shop.id || shop.license_number;
+      const targetLicense = (shop.license_number || shop.id || '').trim();
       try {
-        await supabase
+        const { error } = await supabase
           .from('traders_list')
           .update({
             status: 'Verified',
           })
-          .eq('license_number', shop.license_number);
+          .eq('license_number', targetLicense)
+          .select();
+        if (error) console.error('Supabase signature update error:', error);
       } catch (dbErr) {
         console.warn('Note on Supabase signature update:', dbErr);
       }
@@ -394,17 +397,18 @@ export default function GatcDashboardPage() {
     }
 
     const shopId = shop.id || shop.license_number;
+    const targetLicense = (shop.license_number || shop.id || '').trim();
     const nowIso = new Date().toISOString();
 
     try {
-      await supabase
+      const { error } = await supabase
         .from('traders_list')
         .update({
           status: 'Rejected',
-          rejection_reason: rejectionRemark.trim(),
-          updated_at: nowIso,
         })
-        .eq('license_number', shop.license_number);
+        .eq('license_number', targetLicense)
+        .select();
+      if (error) console.error('Supabase rejection update error:', error);
     } catch (dbErr) {
       console.warn('Note on Supabase rejection update:', dbErr);
     }

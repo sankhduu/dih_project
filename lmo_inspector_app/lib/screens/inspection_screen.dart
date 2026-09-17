@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/offline_sync_service.dart';
+import '../services/geo_verification_service.dart';
 
 class InspectionScreen extends StatefulWidget {
   final String traderName;
@@ -111,86 +112,108 @@ class _InspectionScreenState extends State<InspectionScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Camera capture error / hardware notice: $e');
-
-      // If camera hardware fails or permission is cancelled, allow gallery fallback
-      try {
-        final XFile? galleryPhoto = await picker.pickImage(
-          source: ImageSource.gallery,
-          imageQuality: 85,
+      debugPrint('Camera capture notice: $e');
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.no_photography_rounded, color: Color(0xFFE11D48), size: 26),
+                SizedBox(width: 8),
+                Text('Camera Access Required', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF002B49))),
+              ],
+            ),
+            content: const Text(
+              'Rule 14 & Rule 27 mandate photographic evidence of the physical lead seal embossed with state mark. Please grant camera permission in system settings to record evidence.',
+              style: TextStyle(fontSize: 13, height: 1.4, color: Color(0xFF1E293B)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _handleTakeLivePhoto();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF002B49),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Retry Camera'),
+              ),
+            ],
+          ),
         );
-        if (galleryPhoto != null) {
-          setState(() {
-            _capturedImageFile = File(galleryPhoto.path);
-            _capturedImagePath = galleryPhoto.path;
-            _capturedPhotoTimestamp = DateTime.now().toString().substring(0, 19);
-          });
-        }
-      } catch (_) {
-        // Simulated timestamp capture for emulator/demo
-        setState(() {
-          _capturedPhotoTimestamp = DateTime.now().toString().substring(0, 19);
-        });
       }
     }
   }
 
-  /// Fetches exact GPS coordinates using geolocator
+  /// Fetches exact GPS coordinates with anti-spoofing and geofence attestation
   Future<Position?> _fetchExactCoordinates() async {
     setState(() {
       _isLocating = true;
     });
 
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        debugPrint('Location services are disabled.');
-      }
+    final targetLat = (widget.trader?['latitude'] as num?)?.toDouble() ?? 28.5494;
+    final targetLng = (widget.trader?['longitude'] as num?)?.toDouble() ?? 77.2001;
 
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
+    final result = await GeoVerificationService.verifyInspectorPresence(
+      traderLatitude: targetLat,
+      traderLongitude: targetLng,
+    );
 
-      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        final position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 5),
-          ),
-        );
-        _liveLatitude = position.latitude;
-        _liveLongitude = position.longitude;
-        return position;
-      }
-    } catch (e) {
-      debugPrint('Geolocator fetch notice: $e');
-      try {
-        final lastKnown = await Geolocator.getLastKnownPosition();
-        if (lastKnown != null) {
-          _liveLatitude = lastKnown.latitude;
-          _liveLongitude = lastKnown.longitude;
-          return lastKnown;
-        }
-      } catch (_) {}
-    } finally {
+    if (mounted) {
+      setState(() {
+        _isLocating = false;
+      });
+    }
+
+    if (!result.isSuccess) {
       if (mounted) {
         setState(() {
-          _isLocating = false;
+          _checkGpsLocationMatches = false;
         });
+        GeoVerificationService.showStatutoryFailureDialog(
+          context: context,
+          result: result,
+          onRetry: () => _fetchExactCoordinates(),
+        );
       }
+      return null;
     }
 
-    // Default fallback coordinates for Haryana/district if GPS is disabled or running in emulator
-    final district = (widget.trader?['district'] ?? '').toString().toLowerCase();
-    if (district.contains('hisar')) {
-      _liveLatitude = 29.1492;
-      _liveLongitude = 75.7217;
-    } else {
-      _liveLatitude = 28.8955;
-      _liveLongitude = 76.6066;
+    if (mounted) {
+      setState(() {
+        _liveLatitude = result.position?.latitude;
+        _liveLongitude = result.position?.longitude;
+        _checkGpsLocationMatches = true;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.verified_user_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '📍 ${result.message}',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: emeraldGreen,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
-    return null;
+
+    return result.position;
   }
 
   /// Large Green "Approve & Certify" Button Handler
@@ -342,14 +365,15 @@ class _InspectionScreenState extends State<InspectionScreen> {
         }
 
         // Update Supabase traders_list row: status -> 'Pending_GATC'
-        await supabase.from('traders_list').update({
+        final cleanLic = licenseNumber.trim();
+        final updateRes = await supabase.from('traders_list').update({
           'status': 'Pending_GATC',
           'latitude': lat,
           'longitude': lng,
-        }).eq('license_number', licenseNumber);
+        }).eq('license_number', cleanLic).select();
 
         syncedOnline = true;
-        debugPrint('✅ Online sync to Supabase succeeded: $licenseNumber -> Pending_GATC');
+        debugPrint('✅ Online sync to Supabase succeeded: $cleanLic -> Pending_GATC ($updateRes)');
       }
 
       dismissBlockingDialog();

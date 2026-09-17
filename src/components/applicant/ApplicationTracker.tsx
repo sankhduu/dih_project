@@ -222,21 +222,26 @@ export function ApplicationTracker() {
     if (!appId) return;
     setIsReapplying(true);
     try {
+      const targetLic = (selectedApp?.license_number || appId).trim();
       await supabase
         .from('traders_list')
         .update({
-          status: 'Pending_Inspection',
-          rejection_reason: null,
-          updated_at: new Date().toISOString(),
+          status: 'Pending_LMO',
         })
-        .eq('id', appId);
+        .eq('license_number', targetLic);
 
       // Local update
       setTraders((prev) =>
-        prev.map((t) => (t.id === appId ? { ...t, status: 'Pending_Inspection', rejection_reason: undefined } : t))
+        prev.map((t) =>
+          t.id === appId || t.license_number === targetLic
+            ? { ...t, status: 'Pending_LMO', rejection_reason: undefined }
+            : t
+        )
       );
-      if (selectedApp?.id === appId) {
-        setSelectedApp((prev) => (prev ? { ...prev, status: 'Pending_Inspection', rejection_reason: undefined } : prev));
+      if (selectedApp?.id === appId || selectedApp?.license_number === targetLic) {
+        setSelectedApp((prev) =>
+          prev ? { ...prev, status: 'Pending_LMO', rejection_reason: undefined } : prev
+        );
       }
     } catch (err) {
       console.warn('Re-apply error:', err);
@@ -271,24 +276,41 @@ export function ApplicationTracker() {
 
   // Explicit status check logic for the 4 lifecycle values
   const getStepStatus = (status: string | undefined, stepIndex: number) => {
-    const raw = (status || 'Pending_Inspection').trim();
+    const raw = (status || 'Pending_LMO').trim();
 
-    // 1. Pending_Inspection
-    if (raw === 'Pending_Inspection' || raw.toLowerCase() === 'pending_inspection' || raw === 'Pending') {
+    // 1. Pending_LMO / Pending_Inspection
+    if (
+      raw === 'Pending_LMO' ||
+      raw.toLowerCase() === 'pending_lmo' ||
+      raw === 'Pending_Inspection' ||
+      raw.toLowerCase() === 'pending_inspection' ||
+      raw === 'Pending' ||
+      raw.toLowerCase() === 'pending'
+    ) {
       if (stepIndex === 0) return 'COMPLETE';
       if (stepIndex === 1) return 'CURRENT'; // Awaiting LMO
       return 'PENDING';
     }
 
-    // 2. Under_Review
-    if (raw === 'Under_Review' || raw.toLowerCase() === 'under_review') {
+    // 2. Under_Review / Pending_GATC
+    if (
+      raw === 'Under_Review' ||
+      raw.toLowerCase() === 'under_review' ||
+      raw === 'Pending_GATC' ||
+      raw.toLowerCase() === 'pending_gatc'
+    ) {
       if (stepIndex === 0 || stepIndex === 1) return 'COMPLETE';
       if (stepIndex === 2) return 'CURRENT'; // In GATC Queue
       return 'PENDING';
     }
 
-    // 3. Approved
-    if (raw === 'Approved' || raw.toLowerCase() === 'approved') {
+    // 3. Approved / Verified
+    if (
+      raw === 'Approved' ||
+      raw.toLowerCase() === 'approved' ||
+      raw === 'Verified' ||
+      raw.toLowerCase() === 'verified'
+    ) {
       return 'COMPLETE'; // All steps complete
     }
 
@@ -304,8 +326,8 @@ export function ApplicationTracker() {
   };
 
   const getStatusBadge = (status: string | undefined) => {
-    const raw = (status || 'Pending_Inspection').trim();
-    if (raw === 'Approved' || raw.toLowerCase() === 'approved') {
+    const raw = (status || 'Pending_LMO').trim();
+    if (raw === 'Approved' || raw.toLowerCase() === 'approved' || raw === 'Verified' || raw.toLowerCase() === 'verified') {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300">
           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -313,7 +335,7 @@ export function ApplicationTracker() {
         </span>
       );
     }
-    if (raw === 'Under_Review' || raw.toLowerCase() === 'under_review') {
+    if (raw === 'Under_Review' || raw.toLowerCase() === 'under_review' || raw === 'Pending_GATC' || raw.toLowerCase() === 'pending_gatc') {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-300">
           <Clock className="w-3.5 h-3.5 text-blue-600 animate-spin" />
@@ -337,11 +359,11 @@ export function ApplicationTracker() {
     );
   };
 
-  const currentStatus = selectedApp?.status || 'Pending_Inspection';
-  const isApproved = currentStatus === 'Approved' || currentStatus.toLowerCase() === 'approved';
+  const currentStatus = selectedApp?.status || 'Pending_LMO';
+  const isApproved = currentStatus === 'Approved' || currentStatus.toLowerCase() === 'approved' || currentStatus === 'Verified' || currentStatus.toLowerCase() === 'verified';
   const isRejected = currentStatus === 'Rejected' || currentStatus.toLowerCase() === 'rejected';
-  const isUnderReview = currentStatus === 'Under_Review' || currentStatus.toLowerCase() === 'under_review';
-  const isPendingInspection = currentStatus === 'Pending_Inspection' || currentStatus.toLowerCase() === 'pending_inspection' || currentStatus === 'Pending';
+  const isUnderReview = currentStatus === 'Under_Review' || currentStatus.toLowerCase() === 'under_review' || currentStatus === 'Pending_GATC' || currentStatus.toLowerCase() === 'pending_gatc';
+  const isPendingInspection = currentStatus === 'Pending_LMO' || currentStatus.toLowerCase() === 'pending_lmo' || currentStatus === 'Pending_Inspection' || currentStatus.toLowerCase() === 'pending_inspection' || currentStatus === 'Pending';
 
   return (
     <div className="space-y-6">

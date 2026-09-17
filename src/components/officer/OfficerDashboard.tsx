@@ -557,7 +557,7 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
     // 2. Express API Query (/api/traders?district=...)
     if (loaded.length === 0) {
       try {
-        let apiUrl = `${API_BASE_URL || 'http://localhost:5000'}/api/traders?district=${encodeURIComponent(district)}`;
+        let apiUrl = `${API_BASE_URL}/api/traders?district=${encodeURIComponent(district)}`;
         if (typeof window !== 'undefined') {
           const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
           if (!isLocalhost && (apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1'))) {
@@ -825,12 +825,12 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
     e.preventDefault();
     if (!schedulingTrader) return;
 
-    const targetLicense = schedulingTrader.license_number;
+    const targetLicense = (schedulingTrader.license_number || schedulingTrader.id || '').trim();
     const updatedStatus = 'Scheduled';
 
     setTraders((prev) =>
       prev.map((t) =>
-        t.license_number === targetLicense
+        t.license_number === targetLicense || t.id === targetLicense
           ? { ...t, status: updatedStatus, updated_at: new Date().toISOString() }
           : t
       )
@@ -838,15 +838,14 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
 
     try {
       if (supabase) {
-        await supabase
+        const { error } = await supabase
           .from('traders_list')
           .update({
             status: updatedStatus,
-            scheduled_date: scheduleDate,
-            scheduled_slot: scheduleSlot,
-            updated_at: new Date().toISOString(),
           })
-          .eq('license_number', targetLicense);
+          .eq('license_number', targetLicense)
+          .select();
+        if (error) console.error('Error updating schedule in traders_list:', error);
       }
       showToast(`Field inspection scheduled for ${schedulingTrader.shop_name || targetLicense} on ${scheduleDate} (${scheduleSlot})`);
     } catch {
@@ -860,14 +859,14 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
     e.preventDefault();
     if (!verifyingTrader) return;
 
-    const targetLicense = verifyingTrader.license_number;
+    const targetLicense = (verifyingTrader.license_number || verifyingTrader.id || '').trim();
     const sealCode = sealNumber.trim() || `LEAD-SEAL-${Math.floor(100000 + Math.random() * 900000)}`;
     const updatedStatus = 'Pending_GATC';
     const sig = `LMO-VERIF-${userDistrict.substring(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}-STAMP`;
 
     setTraders((prev) =>
       prev.map((t) =>
-        t.license_number === targetLicense
+        t.license_number === targetLicense || t.id === targetLicense
           ? {
               ...t,
               status: updatedStatus,
@@ -885,12 +884,14 @@ export function OfficerDashboard({ initialTab, onTabChange }: OfficerDashboardPr
 
     try {
       if (supabase) {
-        await supabase
+        const { error } = await supabase
           .from('traders_list')
           .update({
             status: updatedStatus,
           })
-          .eq('license_number', targetLicense);
+          .eq('license_number', targetLicense)
+          .select();
+        if (error) console.error('Error updating verification status in traders_list:', error);
       }
       showToast(`Scale physically verified & stamped! Forwarded to GATC laboratory (Pending_GATC).`);
     } catch {

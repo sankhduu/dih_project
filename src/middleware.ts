@@ -2,12 +2,10 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next();
   const pathname = req.nextUrl.pathname;
 
-  // Protect /admin routes
-  if (pathname.startsWith('/admin')) {
-    // 1. Check for session tokens or role cookies
+  // Protect /admin and /lmo routes with statutory RBAC authentication
+  if (pathname.startsWith('/admin') || pathname.startsWith('/lmo')) {
     const allCookies = req.cookies.getAll();
     const authCookie = allCookies.find(
       (c) =>
@@ -17,38 +15,44 @@ export async function middleware(req: NextRequest) {
         c.name.includes('emaap_auth')
     );
 
-    // If an auth cookie is present, verify role authorization
-    if (authCookie && authCookie.value) {
-      try {
-        let rawContent = decodeURIComponent(authCookie.value);
+    // 1. If not authenticated at all, redirect to login page
+    if (!authCookie || !authCookie.value) {
+      const loginUrl = new URL('/login', req.url);
+      loginUrl.searchParams.set('redirect', pathname);
+      return NextResponse.redirect(loginUrl);
+    }
 
-        // Handle base64-encoded cookie chunks if present
-        if (rawContent.startsWith('base64-')) {
-          try {
-            rawContent = Buffer.from(rawContent.slice(7), 'base64').toString('utf-8');
-          } catch {
-            // ignore parsing error
-          }
-        }
+    // 2. If authenticated, verify authorized role
+    try {
+      let rawContent = decodeURIComponent(authCookie.value);
 
-        // Restrict Traders / Applicants from admin routes
-        if (
-          rawContent.includes('"role":"APPLICANT"') ||
-          rawContent.includes('"role":"Trader"') ||
-          rawContent.includes('"role":"trader"')
-        ) {
-          const unauthorizedUrl = new URL('/trader/dashboard', req.url);
-          return NextResponse.redirect(unauthorizedUrl);
+      if (rawContent.startsWith('base64-')) {
+        try {
+          rawContent = Buffer.from(rawContent.slice(7), 'base64').toString('utf-8');
+        } catch {
+          // ignore parsing error
         }
-      } catch (err) {
-        console.warn('Middleware cookie inspection note:', err);
       }
+
+      // Restrict Traders and Applicants from accessing officer/admin operations
+      const isTrader =
+        rawContent.includes('"role":"APPLICANT"') ||
+        rawContent.includes('"role":"Trader"') ||
+        rawContent.includes('"role":"trader"');
+
+      if (isTrader) {
+        const unauthorizedUrl = new URL('/trader', req.url);
+        return NextResponse.redirect(unauthorizedUrl);
+      }
+    } catch (err) {
+      console.warn('Middleware authentication inspection warning:', err);
     }
   }
 
-  return res;
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: ['/admin/:path*', '/lmo/:path*'],
 };
+

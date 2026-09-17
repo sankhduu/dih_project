@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase-client';
 import { getMockTraderById, updateMockTrader } from '@/lib/mock-traders';
 
@@ -13,10 +13,18 @@ export async function GET(
     if (supabase) {
       try {
         let result = await supabase
-          .from('traders')
+          .from('traders_list')
           .select('*')
           .eq('license_number', decodedId)
           .maybeSingle();
+
+        if (!result.data && !result.error) {
+          result = await supabase
+            .from('traders')
+            .select('*')
+            .eq('license_number', decodedId)
+            .maybeSingle();
+        }
 
         if (!result.data && !result.error) {
           result = await supabase
@@ -57,14 +65,33 @@ export async function PATCH(
     const { id } = await params;
     const decodedId = decodeURIComponent(id).trim();
     const body = await req.json();
-    const { assigned_officer, inspection_status } = body;
+    const { assigned_officer, inspection_status, status } = body;
 
-    const updates: { assigned_officer?: string; inspection_status?: string } = {};
+    const targetStatus = status || inspection_status;
+    const updates: { assigned_officer?: string; inspection_status?: string; status?: string } = {};
     if (assigned_officer !== undefined) updates.assigned_officer = assigned_officer;
     if (inspection_status !== undefined) updates.inspection_status = inspection_status;
+    if (status !== undefined) updates.status = status;
 
     if (supabase) {
       try {
+        if (targetStatus) {
+          const { data, error } = await supabase
+            .from('traders_list')
+            .update({ status: targetStatus })
+            .eq('license_number', decodedId)
+            .select()
+            .maybeSingle();
+
+          if (!error && data) {
+            return NextResponse.json({
+              success: true,
+              message: 'Updated trader successfully in traders_list',
+              data,
+            });
+          }
+        }
+
         const isNumeric = !isNaN(Number(decodedId));
         let query = supabase.from('traders').update(updates);
         if (isNumeric) {

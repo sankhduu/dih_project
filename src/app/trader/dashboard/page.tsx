@@ -200,19 +200,20 @@ export default function TraderDashboardPage() {
   const handleReapply = async () => {
     setIsReapplying(true);
     try {
-      if (traderShop.id) {
-        await supabase
+      const targetLic = (traderShop.license_number || traderShop.id || '').trim();
+      if (targetLic) {
+        const { error } = await supabase
           .from('traders_list')
           .update({
-            status: 'Pending_Inspection',
-            rejection_reason: null,
-            updated_at: new Date().toISOString(),
+            status: 'Pending_LMO',
           })
-          .eq('id', traderShop.id);
+          .eq('license_number', targetLic)
+          .select();
+        if (error) console.error('Error in handleReapply:', error);
       }
       setTraderShop((prev) => ({
         ...prev,
-        status: 'Pending_Inspection',
+        status: 'Pending_LMO',
         rejection_reason: undefined,
         updated_at: new Date().toISOString(),
       }));
@@ -221,7 +222,7 @@ export default function TraderDashboardPage() {
       // Fallback local update
       setTraderShop((prev) => ({
         ...prev,
-        status: 'Pending_Inspection',
+        status: 'Pending_LMO',
         rejection_reason: undefined,
         updated_at: new Date().toISOString(),
       }));
