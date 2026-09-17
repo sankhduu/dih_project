@@ -76,7 +76,10 @@ class Trader {
 
 /// Service connecting to the Legal Metrology (LMO) Express API Backend with Offline Caching
 class ApiService {
-  static const String defaultBaseUrl = 'http://localhost:5000';
+  static const String defaultBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:5000',
+  );
   static const String androidEmulatorBaseUrl = 'http://10.0.2.2:5000';
 
   final String baseUrl;
