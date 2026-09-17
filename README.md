@@ -79,20 +79,25 @@ In December 2024, the Department of Consumer Affairs (DoCA) launched the **Natio
 
 ### 1. Unified Web Portal (`src/app`)
 - **Trader Self-Registration (`/apply`):** Direct applicant workflow with statutory license format generation (`HR-LMO-HIS-2026-XXXXX`).
-- **Executive National Dashboard (`/`):** National KPIs (Total Registered, Verified, Pending, Compliance Rate %) and district breakdowns.
-- **Protected Central Registry (`/admin/traders`):** Protected by Next.js edge middleware and backend Bearer JWT authentication. Enables officer assignment, status updating, and one-click Schedule IX PDF generation.
-- **Public Anti-Counterfeit Scanner (`/verify/[id]`):** Consumer & flying squad verification page validating the cryptographic SHA-256 certificate digest.
+- **Executive National Dashboard (`/`):** National KPIs (Total Registered, Verified, Pending, Compliance Rate %), district breakdowns, and interactive **eMaap Interoperability & Strategic Roadmap Banner** (DigiLocker, anti-corruption analytics, APMC mandi fallback).
+- **Protected Central Registry (`/admin/traders`):** Protected by Next.js edge middleware and backend Bearer JWT authentication. Displays **Statutory Risk Index (SRI 0–100) badges** (`CRITICAL`, `MODERATE`, `LOW`), citizen complaint counts, sort-by-risk toggles, and one-click **"⚡ Auto-Assign by Risk"**.
+- **Public Anti-Counterfeit Scanner & Grievance Portal (`/verify/[id]`):** Consumer & flying squad verification page validating the cryptographic SHA-256 certificate digest, **"Physical Lead Seal Authenticity & Tamper Check"**, and **"Report this Scale / Lodge Grievance"** under Rule 27.
 
 ### 2. Scalable Express API Server (`server.js`)
-- `GET /api/traders` — Directory listing with district/status filtering, rate-limited and protected.
-- `GET /api/traders/:id` — Single trader details by ID or license number.
+- `GET /api/traders` — Directory listing with district/status filtering, `?sortBy=risk` prioritization, rate-limited and protected.
+- `GET /api/traders/:id` — Single trader details by ID or license number with enriched SRI risk scores and seal hashes.
 - `POST /api/traders` — Public registration endpoint for new instruments.
+- `POST /api/traders/auto-assign-risk` — **Predictive Risk Auto-Assignment** routing high-risk traders to available district LMO officers.
+- `POST /api/complaints` & `GET /api/complaints/:license_number` — **Rule 27 Citizen Grievance Engine** logging complaints and dynamically elevating establishment risk.
+- `POST /api/certificate/:license_number/verify-seal` — **Two-Way Cryptographic Seal Verifier** comparing physical lead seal numbers against statutory hashes.
 - `PATCH /api/traders/:id` — **RBAC-protected** officer assignment and inspection status transition.
 - `GET /api/certificate/:license_number` — **Asynchronous queued Schedule IX PDF generator** with in-memory caching and embedded IT Act 2000 Section 3A digital signature block.
 - `POST /api/inspections/sync` — **Idempotent offline sync receiver** with conflict detection.
 - `POST /api/inspections/:license_number/upload` — Multipart inspection photograph handler.
 
 ### 3. Flutter Field Inspector Mobile App (`lmo_inspector_app`)
+- **Real-Time OIML R76 MPE Calculation Engine (`MpeCalculatorService`):** Computes statutory Maximum Permissible Error step functions ($m \le 500e \to \pm 0.5e$, $500e < m \le 2000e \to \pm 1.0e$, $m > 2000e \to \pm 1.5e$) and doubles in-service reverification tolerances under Rule 14(4). Automatically locks status to 'Failed' on breach.
+- **Statutory Risk Index (SRI) Badges & Alerts:** Prominently renders trader risk tiers and displays citizen complaint warnings on inspection sheets.
 - **Anti-Mock GPS Engine (`GeoVerificationService`):** Inspects `position.isMocked` to detect spoofed coordinates or emulator location tampering.
 - **Rule 27 Geofencing:** Verifies inspector is physically within 150 meters of registered premises.
 - **Rule 14 Optical Seal Tagging:** Mandatory live camera viewfinder capture of the crimped lead/wire seal; gallery picking disabled for statutory submissions.

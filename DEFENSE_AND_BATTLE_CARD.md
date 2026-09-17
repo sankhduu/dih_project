@@ -184,6 +184,59 @@ This document provides **rehearsed, rock-solid, legally sound, and technically r
 
 ---
 
+## 🎯 Tier 1 Pitch Differentiators & Advanced Enforcement
+
+### Q15: "How does your system decide which merchant to inspect next? Isn't round-robin or manual assignment vulnerable to officer bias and bribery?"
+
+> **🎤 Rehearsed Answer:**
+> *"This is our greatest operational differentiator over static portals like eMaap: **Predictive Risk-Based Inspection Scheduling (SRI 0–100)**.*
+>
+> *Instead of manual selection or arbitrary schedules, e-Māpan calculates a dynamic Statutory Risk Index for every trader across 4 statutory vectors:*
+> 1. **Instrument Category Risk (30 pts):** High-impact commercial bulk scales (weighbridges, fuel dispensers, jewellery Class II) receive inherently higher base risk than small retail counter scales.
+> 2. **Overdue / Recency Penalty (30 pts):** Escalates linearly once an establishment crosses its mandatory 12-month or 24-month re-verification deadline.
+> 3. **Historical Violation Multiplier (20 pts):** Traders with prior failed inspections or calibration tampering are flagged.
+> 4. **Consumer Grievance Velocity (20 pts):** Live crowdsourced citizen complaints lodged via QR scans dynamically spike trader risk.
+>
+> *With one tap, the administrator triggers '⚡ Auto-Assign by Risk', which automatically routes the highest-risk establishments directly to district flying squads, completely removing officer discretion."*
+
+---
+
+### Q16: "What happens if a citizen gets short-weighed in a market? How does your system capture and act upon that grievance?"
+
+> **🎤 Rehearsed Answer:**
+> *"We turned every citizen with a smartphone into an active enforcement partner via our **Rule 27 Citizen Grievance Loop**:*
+>
+> 1. *Every verified scale displays an official e-Māpan QR code. When scanned, the citizen lands on `/verify/:license_number`.*
+> 2. *Right alongside certificate validity, there is an official **'Report this Scale / Suspected Tampering'** button.*
+> 3. *Citizens can lodge a grievance in 10 seconds under Rule 27 (short-weighing, missing lead seal, display fraud).*
+> 4. *The backend generates a formal grievance reference (`DOCA-CMP-2026-XXXX`), increments the trader's complaint counter, and immediately increases their Statutory Risk Index (SRI).*
+> 5. *The next time an inspector opens that trader's sheet on mobile, an unmissable statutory alert banner appears: **'⚡ Citizen Complaints lodged under Rule 27. Heightened physical scrutiny required.'**"*
+
+---
+
+### Q17: "What stops a corrupt merchant from opening the scale after the inspector leaves and tampering with the calibration?"
+
+> **🎤 Rehearsed Answer:**
+> *"We implemented a **Two-Way Cryptographic Lead Seal Authenticity Re-Check**:*
+>
+> 1. *During physical inspection, the officer crimps a numbered physical lead seal (e.g. `SEAL-LMO-2026-10001-IND`).*
+> 2. *The cryptographic hash of this seal number is permanently committed into the digital verification certificate (Schedule IX).*
+> 3. *On the public `/verify/:id` portal, consumers and surprise flying squads have a **'Physical Lead Seal Authenticity Check'** tool. They type in the physical seal serial embossed on the lead wire.*
+> 4. *The server cryptographically validates the input against the canonical statutory hash. If a merchant has cut the wire or replaced the seal with a counterfeit, the system instantly flashes a crimson **TAMPER_SUSPECTED** warning and notifies the District Controller."*
+
+---
+
+### Q18: "What prevents an inspector from writing down passing calibration numbers even if the scale is inaccurate?"
+
+> **🎤 Rehearsed Answer:**
+> *"In paper and basic web systems, inspectors simply tick 'Pass' or 'Fail'. In e-Māpan 2.0, we built a **Real-Time Statutory MPE Calculation Engine in Flutter**:*
+>
+> 1. *Strictly adheres to **Legal Metrology (General) Rules 2011 Schedule VII Table 1 & OIML R76**.*
+> 2. *When the officer enters observed weights for Zero Load, Half Capacity, and Full Capacity, the engine calculates the allowable Maximum Permissible Error in scale divisions ($m \le 500e \to \pm 0.5e$, $500e < m \le 2000e \to \pm 1.0e$, $m > 2000e \to \pm 1.5e$) and applies statutory in-service doubling under Rule 14(4).*
+> 3. *If the observed error exceeds the statutory limit by even 0.1g, the mobile form **instantly locks the status to 'Failed'** and displays the exact excess deviation in red. The officer cannot manually override it to 'Passed' without logging a formal calibration re-test."*
+
+---
+
 ## 📋 Quick Reference: Statutory Sections to Cite on Stage
 
 | Statute / Rule | Provision | Platform Feature |
@@ -191,7 +244,8 @@ This document provides **rehearsed, rock-solid, legally sound, and technically r
 | **Legal Metrology Act, 2009 — Section 24** | Mandatory verification and stamping before commercial use | Complete digital verification workflow & enforcement |
 | **Legal Metrology Act, 2009 — Section 30** | Penalty for using unverified weight or measure | Consumer QR scanning & instant authenticity lookup |
 | **Legal Metrology (General) Rules, 2011 — Rule 14** | Issue of Certificate of Verification (Schedule IX, Form V) | Automated PDF generation with embedded QR & DSC |
-| **Legal Metrology (General) Rules, 2011 — Rule 27** | Physical stamping and lead/wire sealing of instruments | 4-Factor anti-proxy validation (Geofence + Camera + Seal No) |
-| **Legal Metrology (General) Rules, 2011 — Schedule VII** | Maximum Permissible Error (MPE) tolerances | Automated calibration tolerance verification engine |
+| **Legal Metrology (General) Rules, 2011 — Rule 27** | Physical stamping and lead/wire sealing of instruments | 4-Factor anti-proxy validation (Geofence + Camera + Seal No) & Citizen Grievance Loop |
+| **Legal Metrology (General) Rules, 2011 — Schedule VII** | Maximum Permissible Error (MPE) tolerances & verification intervals | Real-Time MPE calculation engine in Flutter (OIML R76) |
 | **Information Technology Act, 2000 — Section 3 & 3A** | Legal validity of electronic records & digital signatures | Cryptographic SHA-256 digest + PKI / PAdES DSC block |
 | **Digital Personal Data Protection (DPDP) Act, 2023** | Citizen data sovereignty & localization within India | Cloud-agnostic deployment targeting NIC MeghRaaj (GI Cloud) |
+
