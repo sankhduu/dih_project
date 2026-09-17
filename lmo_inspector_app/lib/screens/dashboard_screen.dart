@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/offline_sync_service.dart';
+import '../services/mpe_calculator_service.dart';
 import 'login_screen.dart';
 import 'inspection_screen.dart';
 
@@ -302,11 +303,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildTraderList(List<Map<String, dynamic>> allTraders) {
+    // Enrich each trader with SRI risk score and complaints
+    for (final t in allTraders) {
+      final instrumentType = t['instrument_type']?.toString() ?? 'Weighing Scale';
+      final licenseNumber = t['license_number']?.toString() ?? '';
+      final sri = MpeCalculatorService.calculateSriScore(
+        instrumentType: instrumentType,
+        licenseNumber: licenseNumber,
+        explicitRiskScore: t['risk_score'] != null ? int.tryParse(t['risk_score'].toString()) : null,
+        explicitRiskTier: t['risk_tier']?.toString(),
+        explicitComplaints: t['complaints_count'] != null ? int.tryParse(t['complaints_count'].toString()) : null,
+      );
+      t['risk_score'] = sri['score'];
+      t['risk_tier'] = sri['tier'];
+      t['complaints_count'] = sri['complaints'];
+    }
+
     final filteredTraders = allTraders.where((t) {
       if (_selectedDistrict.toLowerCase() == 'all') return true;
       final d = (t['district'] ?? '').toString().toLowerCase();
       return d == _selectedDistrict.toLowerCase();
     }).toList();
+
+    // Auto-sort descending by SRI Risk score so high-risk traders appear first!
+    filteredTraders.sort((a, b) {
+      final sa = (a['risk_score'] ?? 0) as int;
+      final sb = (b['risk_score'] ?? 0) as int;
+      return sb.compareTo(sa);
+    });
 
     if (filteredTraders.isEmpty) {
       return LayoutBuilder(
@@ -369,6 +393,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final instrumentType = trader['instrument_type']?.toString() ?? 'Weighing Scale';
         final licenseNumber = trader['license_number']?.toString() ?? '';
         final district = trader['district']?.toString() ?? 'Hisar';
+        final riskScore = (trader['risk_score'] ?? 20) as int;
+        final riskTier = (trader['risk_tier'] ?? 'LOW').toString();
+        final complaintsCount = (trader['complaints_count'] ?? 0) as int;
 
         final bool isSavedOffline = OfflineSyncService().isSavedOffline(licenseNumber);
 
@@ -539,6 +566,84 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ),
                       const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.black38),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: riskTier == 'CRITICAL' || riskScore >= 65
+                              ? const Color(0xFFFFF1F2)
+                              : riskTier == 'MODERATE' || riskScore >= 40
+                                  ? const Color(0xFFFFFBEB)
+                                  : const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: riskTier == 'CRITICAL' || riskScore >= 65
+                                ? const Color(0xFFFECDD3)
+                                : riskTier == 'MODERATE' || riskScore >= 40
+                                    ? const Color(0xFFFDE68A)
+                                    : const Color(0xFFA7F3D0),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              riskTier == 'CRITICAL' || riskScore >= 65
+                                  ? Icons.warning_amber_rounded
+                                  : Icons.shield_outlined,
+                              size: 11,
+                              color: riskTier == 'CRITICAL' || riskScore >= 65
+                                  ? const Color(0xFFE11D48)
+                                  : riskTier == 'MODERATE' || riskScore >= 40
+                                      ? accentGold
+                                      : emeraldGreen,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'SRI: $riskTier ($riskScore/100)',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                color: riskTier == 'CRITICAL' || riskScore >= 65
+                                    ? const Color(0xFFE11D48)
+                                    : riskTier == 'MODERATE' || riskScore >= 40
+                                        ? const Color(0xFF92400E)
+                                        : emeraldGreen,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (complaintsCount > 0) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF1F2),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFFDA4AF)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.report_problem_rounded, color: Color(0xFFE11D48), size: 11),
+                              const SizedBox(width: 4),
+                              Text(
+                                '⚡ $complaintsCount Complaint${complaintsCount > 1 ? 's' : ''}',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Color(0xFF9F1239),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ],

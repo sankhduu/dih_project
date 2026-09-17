@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/offline_sync_service.dart';
 import '../services/geo_verification_service.dart';
+import '../services/mpe_calculator_service.dart';
 
 class InspectionScreen extends StatefulWidget {
   final String traderName;
@@ -53,15 +54,98 @@ class _InspectionScreenState extends State<InspectionScreen> {
   double? _liveLatitude;
   double? _liveLongitude;
   bool _isLocating = false;
-
   bool _isSubmitting = false;
+
+  // MPE Engine State & Controllers
+  final TextEditingController _zeroErrorController = TextEditingController(text: '0.0');
+  final TextEditingController _halfLoadErrorController = TextEditingController(text: '15.0');
+  final TextEditingController _fullLoadErrorController = TextEditingController(text: '30.0');
+
+  late MetrologyAccuracyClass _accuracyClass;
+  late MpeEvaluationResult _zeroResult;
+  late MpeEvaluationResult _halfLoadResult;
+  late MpeEvaluationResult _fullLoadResult;
+
+  bool get _isOverallMpePassed =>
+      _zeroResult.isWithinTolerance &&
+      _halfLoadResult.isWithinTolerance &&
+      _fullLoadResult.isWithinTolerance;
+
+  @override
+  void initState() {
+    super.initState();
+    final instType = (widget.trader?['instrument_type'] ?? 'Electronic Counter Scale').toString();
+    _accuracyClass = MpeCalculatorService.resolveClass(instType);
+    _zeroResult = MpeCalculatorService.evaluateReading(
+      standardWeight: 0.0,
+      observedReading: 0.0,
+      accuracyClass: _accuracyClass,
+      stepLabel: 'Zero Load (0kg)',
+    );
+    _halfLoadResult = MpeCalculatorService.evaluateReading(
+      standardWeight: 15.0,
+      observedReading: 15.0,
+      accuracyClass: _accuracyClass,
+      stepLabel: '50% Load (15kg)',
+    );
+    _fullLoadResult = MpeCalculatorService.evaluateReading(
+      standardWeight: 30.0,
+      observedReading: 30.0,
+      accuracyClass: _accuracyClass,
+      stepLabel: '100% Load (30kg)',
+    );
+
+    _zeroErrorController.addListener(_evaluateAllMpe);
+    _halfLoadErrorController.addListener(_evaluateAllMpe);
+    _fullLoadErrorController.addListener(_evaluateAllMpe);
+  }
+
+  @override
+  void dispose() {
+    _zeroErrorController.dispose();
+    _halfLoadErrorController.dispose();
+    _fullLoadErrorController.dispose();
+    super.dispose();
+  }
+
+  void _evaluateAllMpe() {
+    final zeroObs = MpeCalculatorService.parseErrorString(_zeroErrorController.text);
+    final halfObs = MpeCalculatorService.parseErrorString(_halfLoadErrorController.text);
+    final fullObs = MpeCalculatorService.parseErrorString(_fullLoadErrorController.text);
+
+    setState(() {
+      _zeroResult = MpeCalculatorService.evaluateReading(
+        standardWeight: 0.0,
+        observedReading: zeroObs,
+        accuracyClass: _accuracyClass,
+        stepLabel: 'Zero Load (0kg)',
+      );
+      _halfLoadResult = MpeCalculatorService.evaluateReading(
+        standardWeight: 15.0,
+        observedReading: halfObs,
+        accuracyClass: _accuracyClass,
+        stepLabel: '50% Load (15kg)',
+      );
+      _fullLoadResult = MpeCalculatorService.evaluateReading(
+        standardWeight: 30.0,
+        observedReading: fullObs,
+        accuracyClass: _accuracyClass,
+        stepLabel: '100% Load (30kg)',
+      );
+
+      if (!_isOverallMpePassed) {
+        _checkZeroError = false;
+      }
+    });
+  }
 
   bool get _areAllChecksPassed =>
       _checkFlatSurface &&
       _checkZeroError &&
       _checkManufacturerSeal &&
       _checkDisplayTamperFree &&
-      _checkGpsLocationMatches;
+      _checkGpsLocationMatches &&
+      _isOverallMpePassed;
 
   /// Quick shortcut for hackathon demos to select all 5 items
   void _selectAllChecks() {
@@ -606,6 +690,149 @@ class _InspectionScreenState extends State<InspectionScreen> {
     }
   }
 
+  Widget _buildMpeEngineCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _isOverallMpePassed ? Colors.grey.shade300 : Colors.red.shade300,
+          width: _isOverallMpePassed ? 1 : 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.calculate_outlined, color: primaryNavy, size: 18),
+                  SizedBox(width: 8),
+                  Text(
+                    'Maximum Permissible Error (MPE) Engine',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: primaryNavy,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: primaryNavy.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'Class ${_accuracyClass.name.toUpperCase().replaceAll('CLASS', '')} • OIML R76',
+                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: primaryNavy),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Schedule VII statutory tolerance check. Real-time pass/fail mathematical locking.',
+            style: TextStyle(fontSize: 10.5, color: Colors.black54),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMpeField('Zero Load (0kg)', _zeroErrorController, _zeroResult),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildMpeField('50% Load (15kg)', _halfLoadErrorController, _halfLoadResult),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildMpeField('100% Load (30kg)', _fullLoadErrorController, _fullLoadResult),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: _isOverallMpePassed ? const Color(0xFFECFDF5) : const Color(0xFFFFF1F2),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: _isOverallMpePassed ? const Color(0xFFA7F3D0) : const Color(0xFFFECDD3),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _isOverallMpePassed ? Icons.check_circle_outline : Icons.error_outline,
+                  size: 16,
+                  color: _isOverallMpePassed ? emeraldGreen : const Color(0xFFE11D48),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _isOverallMpePassed
+                        ? 'All test points within allowable MPE tolerances (Schedule VII).'
+                        : 'MPE Tolerance Breached! Verification locked to Deficient/Failed under Rule 14.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: _isOverallMpePassed ? const Color(0xFF065F46) : const Color(0xFF9F1239),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMpeField(String label, TextEditingController controller, MpeEvaluationResult result) {
+    final bool pass = result.isWithinTolerance;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: primaryNavy)),
+        const SizedBox(height: 4),
+        TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          decoration: InputDecoration(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            isDense: true,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+            suffixText: 'kg',
+            suffixStyle: const TextStyle(fontSize: 10, color: Colors.grey),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+          decoration: BoxDecoration(
+            color: pass ? const Color(0xFFECFDF5) : const Color(0xFFFFF1F2),
+            borderRadius: BorderRadius.circular(3),
+          ),
+          child: Text(
+            pass ? '✓ Tol: ${result.formattedTolerance}' : '✗ Exc: +${result.excessDeviation.toStringAsFixed(2)}g',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+              color: pass ? emeraldGreen : const Color(0xFFE11D48),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final shopName = widget.traderName.isNotEmpty
@@ -618,9 +845,17 @@ class _InspectionScreenState extends State<InspectionScreen> {
     final district = (widget.trader?['district'] ?? 'Hisar').toString();
     final address = (widget.trader?['address'] ?? '$district, Haryana').toString();
     final instrumentType = (widget.trader?['instrument_type'] ?? 'Weighing Scale').toString();
-    final riskScore = (widget.trader?['riskScore'] ?? widget.trader?['risk_score'] ?? 20) as num;
-    final riskTier = (widget.trader?['riskTier'] ?? widget.trader?['risk_tier'] ?? 'LOW').toString().toUpperCase();
-    final complaintsCount = (widget.trader?['complaintsCount'] ?? widget.trader?['complaints_count'] ?? 0) as num;
+
+    final sri = MpeCalculatorService.calculateSriScore(
+      instrumentType: instrumentType,
+      licenseNumber: licenseNumber,
+      explicitRiskScore: widget.trader?['risk_score'] != null ? int.tryParse(widget.trader!['risk_score'].toString()) : null,
+      explicitRiskTier: widget.trader?['risk_tier']?.toString(),
+      explicitComplaints: widget.trader?['complaints_count'] != null ? int.tryParse(widget.trader!['complaints_count'].toString()) : null,
+    );
+    final riskScore = sri['score'] as int;
+    final riskTier = (sri['tier'] as String).toUpperCase();
+    final complaintsCount = sri['complaints'] as int;
 
     return Scaffold(
       backgroundColor: bgSlate,
@@ -864,7 +1099,10 @@ class _InspectionScreenState extends State<InspectionScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
+
+                  // Real-Time Maximum Permissible Error (MPE) Engine Card
+                  _buildMpeEngineCard(),
 
                   // Bold Title: Physical Verification Checklist
                   Row(
