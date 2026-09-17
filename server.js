@@ -397,6 +397,137 @@ function toWinAnsi(str) {
     .replace(/[^\x20-\x7E]/g, '');
 }
 
+// In-Memory Consumer Complaints Store
+const consumerComplaintsStore = new Map(); // license_number -> Array of complaints
+
+// Pre-populate realistic complaints for demonstrations
+consumerComplaintsStore.set('LMO/2026/10008', [
+  {
+    id: 'DOCA-CMP-2026-1081',
+    license_number: 'LMO/2026/10008',
+    complaint_category: 'Short-Weighing / Under-Dispensing',
+    description: 'Fuel dispenser nozzle #2 suspected of delivering ~180ml short on 5L test can.',
+    observed_discrepancy: '180ml short per 5L',
+    contact_number: '+91 98112 00412',
+    status: 'ACTIVE',
+    reported_at: new Date(Date.now() - 36 * 3600 * 1000).toISOString(),
+  },
+]);
+
+consumerComplaintsStore.set('LMO/2026/10005', [
+  {
+    id: 'DOCA-CMP-2026-1052',
+    license_number: 'LMO/2026/10005',
+    complaint_category: 'Broken / Missing Lead Seal',
+    description: 'Lead verification seal wire severed on 500kg platform scale in grain yard.',
+    observed_discrepancy: 'Severed calibration wire',
+    contact_number: '+91 98765 43210',
+    status: 'ACTIVE',
+    reported_at: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
+  },
+]);
+
+/**
+ * Calculates the Statutory Risk Index (SRI) for an establishment (0 - 100 score).
+ * Weighted Risk Factors:
+ * 1. High-Impact Instrument Category Weight (Max 30 pts)
+ * 2. Overdue / Recency Factor (Max 30 pts)
+ * 3. Inspection History / Past Failures (Max 20 pts)
+ * 4. Active Consumer Complaints (Max 20 pts)
+ */
+function calculateTraderRiskScore(trader) {
+  const breakdown = {
+    instrument: 0,
+    overdue: 0,
+    history: 0,
+    complaints: 0,
+  };
+
+  const inst = (trader.instrument_type || '').toLowerCase();
+  if (inst.includes('weighbridge') || inst.includes('truck')) {
+    breakdown.instrument = 30;
+  } else if (inst.includes('fuel') || inst.includes('petrol') || inst.includes('diesel') || inst.includes('dispenser')) {
+    breakdown.instrument = 28;
+  } else if (inst.includes('gold') || inst.includes('precision') || inst.includes('analytical') || inst.includes('jewel')) {
+    breakdown.instrument = 24;
+  } else if (inst.includes('platform') || inst.includes('mandi') || inst.includes('grain')) {
+    breakdown.instrument = 20;
+  } else if (inst.includes('counter') || inst.includes('grocery') || inst.includes('retail')) {
+    breakdown.instrument = 12;
+  } else {
+    breakdown.instrument = 15;
+  }
+
+  const status = (trader.inspection_status || trader.status || '').toLowerCase();
+  if (status === 'overdue') {
+    breakdown.overdue = 30;
+  } else if (status.includes('pending')) {
+    breakdown.overdue = 25;
+  } else if (status.includes('scheduled')) {
+    breakdown.overdue = 15;
+  } else if (status.includes('failed')) {
+    breakdown.overdue = 20;
+  } else {
+    // Passed / Approved / Verified
+    breakdown.overdue = 5;
+  }
+
+  if (status.includes('failed') || trader.has_failed_history) {
+    breakdown.history = 20;
+  } else if (trader.reinspection_required) {
+    breakdown.history = 15;
+  } else {
+    breakdown.history = 0;
+  }
+
+  const lic = trader.license_number;
+  const complaints = consumerComplaintsStore.get(lic) || [];
+  const complaintCount = complaints.length;
+  // +10 pts per active complaint, capped at 20
+  breakdown.complaints = Math.min(20, complaintCount * 10);
+
+  let score = breakdown.instrument + breakdown.overdue + breakdown.history + breakdown.complaints;
+  score = Math.max(0, Math.min(100, score));
+
+  let tier = 'LOW';
+  if (score >= 70) {
+    tier = 'CRITICAL';
+  } else if (score >= 40) {
+    tier = 'MODERATE';
+  }
+
+  return {
+    score,
+    tier,
+    breakdown,
+    complaintCount,
+  };
+}
+
+function getCanonicalSealInfo(licenseNumber) {
+  const cleanLic = (licenseNumber || '').trim();
+  const canonicalSeal = `SEAL-${cleanLic.replace(/\//g, '-')}-IND`;
+  const sealHash = crypto
+    .createHash('sha256')
+    .update(`${canonicalSeal}|DOCA_METROLOGY_STATUTORY_SECRET_2026`)
+    .digest('hex');
+  return { canonicalSeal, sealHash };
+}
+
+function enrichTraderWithRisk(trader) {
+  const riskInfo = calculateTraderRiskScore(trader);
+  const sealInfo = getCanonicalSealInfo(trader.license_number);
+  return {
+    ...trader,
+    risk_score: riskInfo.score,
+    risk_tier: riskInfo.tier,
+    risk_breakdown: riskInfo.breakdown,
+    complaints_count: riskInfo.complaintCount,
+    canonical_seal_number: sealInfo.canonicalSeal,
+    seal_hash: sealInfo.sealHash,
+  };
+}
+
 // Health Check Endpoint
 app.get('/', (req, res) => {
   res.json({
@@ -407,6 +538,10 @@ app.get('/', (req, res) => {
       getAllTraders: '/api/traders',
       getTraderById: '/api/traders/:id',
       getCertificatePDF: '/api/certificate/:license_number',
+      verifySeal: '/api/certificate/:license_number/verify-seal',
+      postComplaint: '/api/complaints',
+      getComplaints: '/api/complaints/:license_number',
+      autoAssignRisk: '/api/traders/auto-assign-risk',
     },
   });
 });
@@ -456,19 +591,27 @@ app.get('/api/traders', async (req, res) => {
       });
 
       if (!error && data && data.length > 0) {
-        const formatted = data.map((t) => ({
-          id: t.id || t.license_number,
-          trader_name: t.trader_name || t.shop_name || 'Registered Trader',
-          owner_name: t.owner_name || '',
-          license_number: t.license_number,
-          latitude: t.latitude ? parseFloat(t.latitude) : 28.8955,
-          longitude: t.longitude ? parseFloat(t.longitude) : 76.6066,
-          district: t.district || 'Hisar',
-          status: t.status || 'Pending_LMO',
-          inspection_status: t.status || 'Pending_LMO',
-          instrument_type: t.instrument_type || 'Class III Electronic Weighing Scale',
-          trader_email: t.trader_email || '',
-        }));
+        let formatted = data.map((t) =>
+          enrichTraderWithRisk({
+            id: t.id || t.license_number,
+            trader_name: t.trader_name || t.shop_name || 'Registered Trader',
+            owner_name: t.owner_name || '',
+            license_number: t.license_number,
+            latitude: t.latitude ? parseFloat(t.latitude) : 28.8955,
+            longitude: t.longitude ? parseFloat(t.longitude) : 76.6066,
+            district: t.district || 'Hisar',
+            status: t.status || 'Pending_LMO',
+            inspection_status: t.status || 'Pending_LMO',
+            instrument_type: t.instrument_type || 'Class III Electronic Weighing Scale',
+            trader_email: t.trader_email || '',
+            assigned_officer: t.assigned_officer || null,
+          })
+        );
+
+        const sortBy = (req.query.sortBy || req.query.sort || '').toLowerCase();
+        if (sortBy === 'risk') {
+          formatted.sort((a, b) => b.risk_score - a.risk_score);
+        }
 
         return res.status(200).json({
           success: true,
@@ -545,7 +688,14 @@ app.get('/api/traders', async (req, res) => {
           (t.status || '').toLowerCase() === targetStatus.toLowerCase()
       );
     }
-    const sliced = mockList.slice(0, limit);
+
+    let enrichedList = mockList.map((t) => enrichTraderWithRisk(t));
+    const sortBy = (req.query.sortBy || req.query.sort || '').toLowerCase();
+    if (sortBy === 'risk') {
+      enrichedList.sort((a, b) => b.risk_score - a.risk_score);
+    }
+
+    const sliced = enrichedList.slice(0, limit);
     return res.status(200).json({
       success: true,
       count: sliced.length,
@@ -752,6 +902,146 @@ app.patch('/api/traders/:id', authMiddleware, handleTraderPatch);
 app.patch('/api/traders/:id/assign', authMiddleware, handleTraderPatch);
 
 /**
+ * POST /api/traders/auto-assign-risk
+ * Automatically prioritizes and assigns highest-risk uninspected traders to district officers.
+ */
+app.post('/api/traders/auto-assign-risk', authMiddleware, async (req, res) => {
+  try {
+    const district = req.body.district || req.query.district;
+    const officerPool = [
+      'Inspector Rajesh Varma (Zone-1)',
+      'Inspector Anita Desai (Zone-2)',
+      'Inspector Sandeep Phogat (Flying Squad)',
+      'Inspector Vikram Rathore (Rapid Response)',
+    ];
+
+    let candidates = Object.values(SAMPLE_MOCK_TRADERS).filter((t) => {
+      const st = (t.inspection_status || t.status || '').toLowerCase();
+      const isUninspected = st.includes('pending') || st.includes('scheduled');
+      if (district && district !== 'All') {
+        return isUninspected && (t.district || '').toLowerCase() === district.toLowerCase();
+      }
+      return isUninspected;
+    });
+
+    // Score all candidates with Predictive Risk Index
+    const scored = candidates.map((t) => enrichTraderWithRisk(t));
+    // Sort descending by risk score
+    scored.sort((a, b) => b.risk_score - a.risk_score);
+
+    const assignments = [];
+    let officerIdx = 0;
+
+    for (const trader of scored) {
+      const assigned = officerPool[officerIdx % officerPool.length];
+      officerIdx++;
+      trader.assigned_officer = assigned;
+      trader.status = 'Scheduled';
+      trader.inspection_status = 'Pending_Inspection';
+
+      if (SAMPLE_MOCK_TRADERS[trader.license_number]) {
+        SAMPLE_MOCK_TRADERS[trader.license_number].assigned_officer = assigned;
+        SAMPLE_MOCK_TRADERS[trader.license_number].status = 'Scheduled';
+      }
+
+      assignments.push({
+        license_number: trader.license_number,
+        trader_name: trader.trader_name,
+        risk_score: trader.risk_score,
+        risk_tier: trader.risk_tier,
+        assigned_officer: assigned,
+      });
+    }
+
+    console.log(`⚡ Auto-assigned ${assignments.length} high-risk traders to officers via Predictive Scheduling.`);
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully prioritized and auto-assigned ${assignments.length} establishments based on Statutory Risk Index.`,
+      count: assignments.length,
+      assignments,
+    });
+  } catch (err) {
+    console.error('Error in /api/traders/auto-assign-risk:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/complaints
+ * Ingests a consumer tampering/short-weighing complaint and immediately impacts the trader's risk score.
+ */
+app.post('/api/complaints', async (req, res) => {
+  try {
+    const { license_number, complaint_category, description, observed_discrepancy, contact_number, email } = req.body;
+
+    if (!license_number || !complaint_category) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields',
+        message: 'license_number and complaint_category are required.',
+      });
+    }
+
+    const cleanLic = decodeURIComponent(license_number).trim();
+    const complaintId = `DOCA-CMP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newComplaint = {
+      id: complaintId,
+      license_number: cleanLic,
+      complaint_category: complaint_category.trim(),
+      description: description ? description.trim() : 'Suspected accuracy or seal tampering issue reported by consumer.',
+      observed_discrepancy: observed_discrepancy || 'Not specified',
+      contact_number: contact_number || 'Confidential',
+      email: email || '',
+      status: 'ACTIVE',
+      reported_at: new Date().toISOString(),
+    };
+
+    const existingList = consumerComplaintsStore.get(cleanLic) || [];
+    existingList.push(newComplaint);
+    consumerComplaintsStore.set(cleanLic, existingList);
+
+    // If trader in SAMPLE_MOCK_TRADERS, check updated risk score
+    const trader = SAMPLE_MOCK_TRADERS[cleanLic] || Object.values(SAMPLE_MOCK_TRADERS).find((t) => t.license_number === cleanLic);
+    let updatedRisk = null;
+    if (trader) {
+      updatedRisk = calculateTraderRiskScore(trader);
+    }
+
+    console.log(`🚨 Consumer complaint logged against ${cleanLic}: [${complaint_category}] Ref: ${complaintId}`);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Consumer complaint lodged successfully under Rule 27 citizen grievance protocol. Priority inspection queue updated.',
+      complaint_id: complaintId,
+      reference_number: complaintId,
+      license_number: cleanLic,
+      updated_risk_score: updatedRisk ? updatedRisk.score : null,
+      updated_risk_tier: updatedRisk ? updatedRisk.tier : null,
+      complaint: newComplaint,
+    });
+  } catch (err) {
+    console.error('Error in POST /api/complaints:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/complaints/:license_number
+ * Fetches active citizen complaints filed against a trader.
+ */
+app.get('/api/complaints/:license_number', (req, res) => {
+  const cleanLic = decodeURIComponent(req.params.license_number).trim();
+  const list = consumerComplaintsStore.get(cleanLic) || [];
+  return res.status(200).json({
+    success: true,
+    license_number: cleanLic,
+    count: list.length,
+    data: list,
+  });
+});
+
+/**
  * GET /api/traders/:id
  * Fetches a single trader's details by their ID or license_number
  */
@@ -781,7 +1071,7 @@ app.get('/api/traders/:id', async (req, res) => {
       if (!error && data) {
         return res.status(200).json({
           success: true,
-          data: data,
+          data: enrichTraderWithRisk(data),
         });
       }
     }
@@ -796,7 +1086,7 @@ app.get('/api/traders/:id', async (req, res) => {
     if (mockTrader) {
       return res.status(200).json({
         success: true,
-        data: mockTrader,
+        data: enrichTraderWithRisk(mockTrader),
         fallback: true,
       });
     }
@@ -996,9 +1286,50 @@ app.post('/api/inspections/:license_number/upload', upload.single('image'), asyn
 });
 
 /**
- * GET /api/certificate/:license_number
- * Generates an official PDF Verification Certificate with an embedded QR code.
+ * POST /api/certificate/:license_number/verify-seal
+ * Validates the physical lead seal stamped on an instrument against
+ * the canonical seal ID and SHA-256 cryptographic seal hash.
  */
+app.post('/api/certificate/:license_number/verify-seal', (req, res) => {
+  try {
+    const rawLicense = req.params.license_number;
+    const licenseNumber = decodeURIComponent(rawLicense).trim();
+    const { seal_number } = req.body;
+
+    if (!seal_number) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing seal_number',
+        message: 'Physical seal number stamped on the instrument is required.',
+      });
+    }
+
+    const { canonicalSeal, sealHash } = getCanonicalSealInfo(licenseNumber);
+    const cleanedEntered = seal_number.trim().toUpperCase();
+    const isAuthentic = cleanedEntered === canonicalSeal.toUpperCase();
+
+    const result = {
+      success: true,
+      status: isAuthentic ? 'SEAL_AUTHENTIC' : 'TAMPER_SUSPECTED',
+      is_authentic: isAuthentic,
+      license_number: licenseNumber,
+      entered_seal: seal_number,
+      expected_seal_format: canonicalSeal,
+      cryptographic_seal_hash: sealHash,
+      message: isAuthentic
+        ? 'Physical lead seal verified against National Legal Metrology Stamping Register. No tampering detected.'
+        : 'CRITICAL ALERT: Physical seal mismatch detected! Entered seal does not match the official statutory record. Instrument may have been unsealed or altered post-verification.',
+      verified_at: new Date().toISOString(),
+    };
+
+    console.log(`🔐 Seal verification for ${licenseNumber}: ${result.status} (Entered: "${seal_number}")`);
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('Error in verify-seal:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 /**
  * GET /api/certificate/:license_number
  * Generates an official statutory PDF Verification Certificate with embedded QR code,

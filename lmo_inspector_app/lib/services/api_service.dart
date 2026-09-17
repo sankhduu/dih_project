@@ -16,6 +16,10 @@ class Trader {
   final String status; // 'Pending_LMO', 'Pending_GATC', 'Verified', 'Rejected'
   final String district;
   final String traderEmail;
+  final int riskScore;
+  final String riskTier;
+  final int complaintsCount;
+  final String? canonicalSealNumber;
 
   Trader({
     required this.traderName,
@@ -27,6 +31,10 @@ class Trader {
     required this.status,
     this.district = 'Hisar',
     this.traderEmail = '',
+    this.riskScore = 20,
+    this.riskTier = 'LOW',
+    this.complaintsCount = 0,
+    this.canonicalSealNumber,
   });
 
   // Backward compatibility getters
@@ -44,6 +52,10 @@ class Trader {
       status: (json['status'] ?? json['inspection_status'] ?? 'Pending_LMO').toString(),
       district: (json['district'] ?? 'Hisar').toString(),
       traderEmail: (json['trader_email'] ?? '').toString(),
+      riskScore: int.tryParse((json['risk_score'] ?? '20').toString()) ?? 20,
+      riskTier: (json['risk_tier'] ?? 'LOW').toString(),
+      complaintsCount: int.tryParse((json['complaints_count'] ?? '0').toString()) ?? 0,
+      canonicalSealNumber: json['canonical_seal_number']?.toString(),
     );
   }
 

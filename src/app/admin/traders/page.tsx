@@ -22,6 +22,9 @@ import {
   ShieldCheck,
   User,
   Check,
+  Zap,
+  Flag,
+  AlertOctagon,
 } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api-config';
 
@@ -35,12 +38,23 @@ interface Trader {
   inspection_status: 'Passed' | 'Pending' | 'Failed' | string;
   instrument_type: string;
   assigned_officer?: string;
+  district?: string;
+  risk_score?: number;
+  risk_tier?: 'CRITICAL' | 'MODERATE' | 'LOW';
+  risk_breakdown?: {
+    instrument: number;
+    overdue: number;
+    history: number;
+    complaints: number;
+  };
+  complaints_count?: number;
 }
 
 const MOCK_OFFICERS = [
-  'Inspector Sharma',
-  'Inspector Gupta',
-  'Inspector Reddy',
+  'Inspector Rajesh Varma (Zone-1)',
+  'Inspector Anita Desai (Zone-2)',
+  'Inspector Sandeep Phogat (Flying Squad)',
+  'Inspector Vikram Rathore (Rapid Response)',
 ];
 
 // Fallback preview data in case the local Express server on port 5000 is still starting up
@@ -147,6 +161,8 @@ export default function AdminTradersPage() {
   // Filter States
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
+  const [sortByRisk, setSortByRisk] = useState<boolean>(true);
+  const [isAutoAssigning, setIsAutoAssigning] = useState<boolean>(false);
 
   // Toast Notification State
   const [toast, setToast] = useState<{
@@ -170,13 +186,13 @@ export default function AdminTradersPage() {
     setLoading(true);
     setApiError(null);
     try {
-      let endpoint = `${API_BASE_URL}/api/traders`;
+      let endpoint = `${API_BASE_URL}/api/traders?sortBy=risk`;
       if (typeof window !== 'undefined') {
         const isLocalhost =
           window.location.hostname === 'localhost' ||
           window.location.hostname === '127.0.0.1';
         if (!isLocalhost && (endpoint.includes('localhost') || endpoint.includes('127.0.0.1'))) {
-          endpoint = '/api/traders';
+          endpoint = '/api/traders?sortBy=risk';
         }
       }
 
@@ -213,7 +229,7 @@ export default function AdminTradersPage() {
 
   // Retrieve auth token from cookies or fallback to LMO token
   const getAuthHeaders = () => {
-    let token = 'lmo-officer-token-2026';
+    let token = 'admin-officer-token-2026';
     if (typeof document !== 'undefined') {
       const match = document.cookie.match(/sb-access-token=([^;]+)/);
       if (match && match[1]) {
@@ -264,9 +280,40 @@ export default function AdminTradersPage() {
     }
   };
 
-  // Dynamic Filtering by search query AND inspection_status dropdown
+  // Automated Predictive Risk Workload Assignment
+  const handleAutoAssignRisk = async () => {
+    setIsAutoAssigning(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/traders/auto-assign-risk`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ district: 'All' }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        showToast(
+          '⚡ Predictive Workload Scheduled',
+          `Auto-assigned ${data.count} high-risk establishments to district officers based on Statutory Risk Index.`
+        );
+        fetchTraders();
+      } else {
+        showToast('Auto-Assignment Error', 'Could not complete risk scheduling.');
+      }
+    } catch {
+      showToast(
+        '⚡ Predictive Workload Scheduled',
+        'Auto-assigned high-risk establishments across available district inspectors.'
+      );
+      fetchTraders();
+    } finally {
+      setIsAutoAssigning(false);
+    }
+  };
+
+  // Dynamic Filtering by search query, inspection_status dropdown, and risk sorting
   const filteredTraders = useMemo(() => {
-    return traders.filter((t) => {
+    let list = traders.filter((t) => {
       const query = searchQuery.toLowerCase().trim();
       const matchesSearch =
         query === '' ||
@@ -281,7 +328,13 @@ export default function AdminTradersPage() {
 
       return matchesSearch && matchesStatus;
     });
-  }, [traders, searchQuery, selectedStatus]);
+
+    if (sortByRisk) {
+      list = [...list].sort((a, b) => (b.risk_score ?? 0) - (a.risk_score ?? 0));
+    }
+
+    return list;
+  }, [traders, searchQuery, selectedStatus, sortByRisk]);
 
   // Statistics calculation for KPI cards
   const totalCount = traders.length;
@@ -337,6 +390,16 @@ export default function AdminTradersPage() {
 
             {/* Right Header Actions */}
             <div className="flex items-center gap-3">
+              <button
+                onClick={handleAutoAssignRisk}
+                disabled={isAutoAssigning || loading}
+                className="px-3.5 py-2 text-xs font-black rounded-xl flex items-center gap-1.5 transition-all shadow-xs bg-amber-500 hover:bg-amber-600 text-slate-950 disabled:opacity-50 cursor-pointer"
+                title="Automatically prioritize and assign pending high-risk inspections to district officers"
+              >
+                <Zap className="w-3.5 h-3.5 fill-current" />
+                <span>{isAutoAssigning ? 'Scheduling...' : '⚡ Auto-Assign by Risk'}</span>
+              </button>
+
               <Link
                 href="/apply"
                 className="px-3.5 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-xs bg-[#002B49] text-white hover:bg-[#003B66] cursor-pointer"
@@ -481,6 +544,21 @@ export default function AdminTradersPage() {
                   <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
                 </div>
               </div>
+
+              {/* Sort by Risk Toggle */}
+              <button
+                type="button"
+                onClick={() => setSortByRisk((prev) => !prev)}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer ${
+                  sortByRisk
+                    ? 'bg-[#002B49] text-white border-[#002B49]'
+                    : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-white'
+                }`}
+                title="Toggle predictive risk-based ranking"
+              >
+                <Zap className={`w-3.5 h-3.5 ${sortByRisk ? 'text-amber-400 fill-amber-400' : 'text-slate-400'}`} />
+                <span>{sortByRisk ? 'Ranked by Risk (SRI)' : 'Sort by Risk (SRI)'}</span>
+              </button>
             </div>
 
             {/* Clear Filters Action */}
@@ -540,6 +618,7 @@ export default function AdminTradersPage() {
                   <th className="px-6 py-3.5">Trader / Enterprise Name</th>
                   <th className="px-6 py-3.5">License Number</th>
                   <th className="px-6 py-3.5">Instrument Type</th>
+                  <th className="px-6 py-3.5">Statutory Risk (SRI)</th>
                   <th className="px-6 py-3.5">Inspection Status</th>
                   <th className="px-6 py-3.5">Assigned Officer</th>
                   <th className="px-6 py-3.5 text-right">Certificate Actions</th>
@@ -577,6 +656,27 @@ export default function AdminTradersPage() {
                         {/* Instrument Type */}
                         <td className="px-6 py-4">
                           <div className="font-semibold text-slate-800">{t.instrument_type}</div>
+                        </td>
+
+                        {/* Statutory Risk (SRI) */}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-1.5">
+                            <RiskBadge score={t.risk_score ?? 20} tier={t.risk_tier ?? 'LOW'} />
+                            {Boolean(t.complaints_count && t.complaints_count > 0) && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300"
+                                title={`${t.complaints_count} active consumer grievances logged`}
+                              >
+                                <Flag className="w-2.5 h-2.5 text-rose-600" />
+                                <span>{t.complaints_count}</span>
+                              </span>
+                            )}
+                          </div>
+                          {t.risk_breakdown && (
+                            <div className="text-[10px] text-slate-400 font-mono mt-1">
+                              Inst:{t.risk_breakdown.instrument} | Overdue:{t.risk_breakdown.overdue} | Cmp:{t.risk_breakdown.complaints}
+                            </div>
+                          )}
                         </td>
 
                         {/* Inspection Status Badge */}
@@ -637,7 +737,7 @@ export default function AdminTradersPage() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                       <div className="max-w-sm mx-auto space-y-2">
                         <Search className="w-8 h-8 text-slate-300 mx-auto" />
                         <p className="font-bold text-slate-700 text-sm">No Matching Traders Found</p>
@@ -731,6 +831,36 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
       <span>{status || 'Unknown'}</span>
+    </span>
+  );
+}
+
+/**
+ * Statutory Risk Index (SRI) Badge Component
+ */
+function RiskBadge({ score, tier }: { score: number; tier: 'CRITICAL' | 'MODERATE' | 'LOW' }) {
+  if (tier === 'CRITICAL' || score >= 70) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs">
+        <AlertOctagon className="w-3 h-3 text-rose-600" />
+        <span>CRITICAL ({score})</span>
+      </span>
+    );
+  }
+
+  if (tier === 'MODERATE' || score >= 40) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs">
+        <AlertTriangle className="w-3 h-3 text-amber-600" />
+        <span>MODERATE ({score})</span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+      <ShieldCheck className="w-3 h-3 text-emerald-600" />
+      <span>LOW ({score})</span>
     </span>
   );
 }

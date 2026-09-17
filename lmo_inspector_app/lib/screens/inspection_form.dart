@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../services/api_service.dart';
 import '../services/offline_sync_service.dart';
+import '../services/mpe_calculator_service.dart';
 import '../main.dart';
 
 class InspectionFormScreen extends StatefulWidget {
@@ -38,6 +39,13 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
   File? _capturedImageFile;
   String _photoTimestamp = '';
 
+  // MPE Calculator & Verification State
+  late MetrologyAccuracyClass _accuracyClass;
+  late MpeEvaluationResult _zeroResult;
+  late MpeEvaluationResult _halfLoadResult;
+  late MpeEvaluationResult _fullLoadResult;
+  bool _isOverallMpePassed = true;
+
   // Form Controllers
   final TextEditingController _sealNumberController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
@@ -46,11 +54,66 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
   final TextEditingController _fullLoadErrorController = TextEditingController(text: '+1.0 g');
   bool _isSubmitting = false;
 
+  void _recalculateMpe() {
+    final zeroErr = MpeCalculatorService.parseErrorString(_zeroErrorController.text);
+    final halfErr = MpeCalculatorService.parseErrorString(_halfLoadErrorController.text);
+    final fullErr = MpeCalculatorService.parseErrorString(_fullLoadErrorController.text);
+
+    final zeroEval = MpeCalculatorService.evaluateReading(
+      standardWeight: 0.0,
+      observedReading: zeroErr,
+      verificationIntervalE: 1.0,
+      accuracyClass: _accuracyClass,
+      stepLabel: 'Zero Load (0 kg)',
+    );
+
+    final halfEval = MpeCalculatorService.evaluateReading(
+      standardWeight: 1000.0,
+      observedReading: 1000.0 + halfErr,
+      verificationIntervalE: 1.0,
+      accuracyClass: _accuracyClass,
+      stepLabel: '50% Capacity (15 kg)',
+    );
+
+    final fullEval = MpeCalculatorService.evaluateReading(
+      standardWeight: 3000.0,
+      observedReading: 3000.0 + fullErr,
+      verificationIntervalE: 1.0,
+      accuracyClass: _accuracyClass,
+      stepLabel: '100% Load (30 kg)',
+    );
+
+    final allPassed = zeroEval.isWithinTolerance && halfEval.isWithinTolerance && fullEval.isWithinTolerance;
+
+    if (mounted) {
+      setState(() {
+        _zeroResult = zeroEval;
+        _halfLoadResult = halfEval;
+        _fullLoadResult = fullEval;
+        _isOverallMpePassed = allPassed;
+        if (!allPassed) {
+          _selectedStatus = 'Failed';
+        }
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _accuracyClass = MpeCalculatorService.resolveClass(widget.trader.instrumentType);
     _selectedStatus = 'Passed';
     _sealNumberController.text = 'DL-LMO-SEAL-${widget.trader.licenseNumber.replaceAll('/', '-')}-A';
+
+    _zeroResult = MpeCalculatorService.evaluateReading(standardWeight: 0, observedReading: 0);
+    _halfLoadResult = MpeCalculatorService.evaluateReading(standardWeight: 1000, observedReading: 1000.5);
+    _fullLoadResult = MpeCalculatorService.evaluateReading(standardWeight: 3000, observedReading: 3001.0);
+    _recalculateMpe();
+
+    _zeroErrorController.addListener(_recalculateMpe);
+    _halfLoadErrorController.addListener(_recalculateMpe);
+    _fullLoadErrorController.addListener(_recalculateMpe);
+
     _initializeCamera();
   }
 
@@ -90,6 +153,9 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
 
   @override
   void dispose() {
+    _zeroErrorController.removeListener(_recalculateMpe);
+    _halfLoadErrorController.removeListener(_recalculateMpe);
+    _fullLoadErrorController.removeListener(_recalculateMpe);
     _cameraController?.dispose();
     _sealNumberController.dispose();
     _notesController.dispose();
@@ -500,12 +566,101 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
             children: [
               const Icon(Icons.scale_rounded, size: 14, color: Color(0xFF475569)),
               const SizedBox(width: 6),
-              Text(
-                'Instrument: ${trader.instrumentType}',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+              Expanded(
+                child: Text(
+                  'Instrument: ${trader.instrumentType}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                ),
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: trader.riskTier == 'CRITICAL' || trader.riskScore >= 70
+                      ? const Color(0xFFFFF1F2)
+                      : trader.riskTier == 'MODERATE' || trader.riskScore >= 40
+                          ? const Color(0xFFFFFBEB)
+                          : const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: trader.riskTier == 'CRITICAL' || trader.riskScore >= 70
+                        ? const Color(0xFFFECDD3)
+                        : trader.riskTier == 'MODERATE' || trader.riskScore >= 40
+                            ? const Color(0xFFFDE68A)
+                            : const Color(0xFFA7F3D0),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      trader.riskTier == 'CRITICAL' || trader.riskScore >= 70
+                          ? Icons.warning_amber_rounded
+                          : Icons.shield_outlined,
+                      size: 12,
+                      color: trader.riskTier == 'CRITICAL' || trader.riskScore >= 70
+                          ? alertRose
+                          : trader.riskTier == 'MODERATE' || trader.riskScore >= 40
+                              ? accentGold
+                              : emeraldGreen,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'SRI Risk: ${trader.riskTier} (${trader.riskScore}/100)',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: trader.riskTier == 'CRITICAL' || trader.riskScore >= 70
+                            ? alertRose
+                            : trader.riskTier == 'MODERATE' || trader.riskScore >= 40
+                                ? const Color(0xFF92400E)
+                                : emeraldGreen,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'Class: ${_accuracyClass.name.toUpperCase()}',
+                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                ),
+              ),
+            ],
+          ),
+          if (trader.complaintsCount > 0) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF1F2),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFFDA4AF)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.flag_rounded, size: 14, color: alertRose),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Citizen Alert: ${trader.complaintsCount} grievance(s) on file under Rule 27.',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF9F1239)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -750,32 +905,89 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Maximum Permissible Error (MPE) Verification Table (Rule 14)',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Expanded(
+                child: Text(
+                  'Maximum Permissible Error (MPE) Engine',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'Schedule VII / OIML R76',
+                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 4),
+          const Text(
+            'Live mathematical compliance validation as values are entered. Replaces manual officer discretion.',
+            style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
-                child: _buildErrorField('Zero Load Error', _zeroErrorController),
+                child: _buildErrorField('Zero Load (0kg)', _zeroErrorController, _zeroResult),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _buildErrorField('50% Capacity Error', _halfLoadErrorController),
+                child: _buildErrorField('50% Load (15kg)', _halfLoadErrorController, _halfLoadResult),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _buildErrorField('100% Load Error', _fullLoadErrorController),
+                child: _buildErrorField('100% Load (30kg)', _fullLoadErrorController, _fullLoadResult),
               ),
             ],
+          ),
+          const SizedBox(height: 10),
+          // Overall MPE status indicator
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: _isOverallMpePassed ? const Color(0xFFECFDF5) : const Color(0xFFFFF1F2),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: _isOverallMpePassed ? const Color(0xFFA7F3D0) : const Color(0xFFFECDD3),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _isOverallMpePassed ? Icons.check_circle_outline : Icons.error_outline,
+                  size: 16,
+                  color: _isOverallMpePassed ? emeraldGreen : alertRose,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _isOverallMpePassed
+                      ? 'All test points within allowable MPE tolerances. Eligible for statutory stamping.'
+                      : 'MPE Tolerance Breached! Verification outcome automatically locked to Failed under Rule 14.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: _isOverallMpePassed ? const Color(0xFF065F46) : const Color(0xFF9F1239),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildErrorField(String label, TextEditingController controller) {
+  Widget _buildErrorField(String label, TextEditingController controller, MpeEvaluationResult result) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -789,7 +1001,31 @@ class _InspectionFormScreenState extends State<InspectionFormScreen> {
             filled: true,
             fillColor: const Color(0xFFF8FAFC),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: result.isWithinTolerance ? const Color(0xFFCBD5E1) : alertRose,
+                width: result.isWithinTolerance ? 1.0 : 1.5,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          decoration: BoxDecoration(
+            color: result.isWithinTolerance ? const Color(0xFFECFDF5) : const Color(0xFFFFF1F2),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            result.isWithinTolerance
+              ? '✓ ${result.formattedTolerance}'
+              : '✗ Exceeds: +${result.excessDeviation.toStringAsFixed(1)}g',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+              color: result.isWithinTolerance ? emeraldGreen : alertRose,
+            ),
           ),
         ),
       ],

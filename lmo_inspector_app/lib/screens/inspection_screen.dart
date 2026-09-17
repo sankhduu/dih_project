@@ -618,6 +618,9 @@ class _InspectionScreenState extends State<InspectionScreen> {
     final district = (widget.trader?['district'] ?? 'Hisar').toString();
     final address = (widget.trader?['address'] ?? '$district, Haryana').toString();
     final instrumentType = (widget.trader?['instrument_type'] ?? 'Weighing Scale').toString();
+    final riskScore = (widget.trader?['riskScore'] ?? widget.trader?['risk_score'] ?? 20) as num;
+    final riskTier = (widget.trader?['riskTier'] ?? widget.trader?['risk_tier'] ?? 'LOW').toString().toUpperCase();
+    final complaintsCount = (widget.trader?['complaintsCount'] ?? widget.trader?['complaints_count'] ?? 0) as num;
 
     return Scaffold(
       backgroundColor: bgSlate,
@@ -777,6 +780,85 @@ class _InspectionScreenState extends State<InspectionScreen> {
                               ],
                             ),
                           ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: riskTier == 'CRITICAL' || riskScore >= 70
+                                      ? const Color(0xFFFFF1F2)
+                                      : riskTier == 'MODERATE' || riskScore >= 40
+                                          ? const Color(0xFFFFFBEB)
+                                          : const Color(0xFFECFDF5),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: riskTier == 'CRITICAL' || riskScore >= 70
+                                        ? const Color(0xFFFECDD3)
+                                        : riskTier == 'MODERATE' || riskScore >= 40
+                                            ? const Color(0xFFFDE68A)
+                                            : const Color(0xFFA7F3D0),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      riskTier == 'CRITICAL' || riskScore >= 70
+                                          ? Icons.warning_amber_rounded
+                                          : Icons.shield_outlined,
+                                      size: 12,
+                                      color: riskTier == 'CRITICAL' || riskScore >= 70
+                                          ? const Color(0xFFE11D48)
+                                          : riskTier == 'MODERATE' || riskScore >= 40
+                                              ? accentGold
+                                              : emeraldGreen,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'SRI Risk: $riskTier ($riskScore/100)',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        color: riskTier == 'CRITICAL' || riskScore >= 70
+                                            ? const Color(0xFFE11D48)
+                                            : riskTier == 'MODERATE' || riskScore >= 40
+                                                ? const Color(0xFF92400E)
+                                                : emeraldGreen,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (complaintsCount > 0) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF1F2),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFFFDA4AF)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.report_problem_rounded, color: Color(0xFFE11D48), size: 15),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      '⚡ Citizen Complaints ($complaintsCount) lodged under Rule 27. Heightened physical scrutiny required.',
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Color(0xFF9F1239),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),

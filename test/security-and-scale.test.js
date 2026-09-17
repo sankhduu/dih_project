@@ -234,6 +234,141 @@ async function runTests() {
       `Rate limiting headers present: Limit=${rateLimitCheck.headers['x-ratelimit-limit']}, Remaining=${rateLimitCheck.headers['x-ratelimit-remaining']}`
     );
 
+    console.log('\n--- 6. Predictive Risk Index (SRI) Calculation & Sorting ---');
+
+    // Test 6.1: Verify traders return with risk_score, risk_tier, and complaints_count
+    const riskTradersRes = await makeRequest({
+      hostname: '127.0.0.1',
+      port: PORT,
+      path: '/api/traders?sortBy=risk',
+      method: 'GET',
+    });
+
+    const riskTradersJson = riskTradersRes.json();
+    assert(
+      riskTradersRes.statusCode === 200 &&
+      riskTradersJson.data &&
+      riskTradersJson.data.length > 0 &&
+      riskTradersJson.data[0].risk_score !== undefined &&
+      riskTradersJson.data[0].risk_tier !== undefined,
+      'Traders fetched with Statutory Risk Index (SRI) and risk tiers (CRITICAL/MODERATE/LOW)'
+    );
+
+    // Test 6.2: Ensure descending order when sortBy=risk
+    let isSortedDescending = true;
+    for (let i = 1; i < riskTradersJson.data.length; i++) {
+      if (riskTradersJson.data[i].risk_score > riskTradersJson.data[i - 1].risk_score) {
+        isSortedDescending = false;
+        break;
+      }
+    }
+    assert(
+      isSortedDescending,
+      `Traders correctly ordered descending by predictive risk score (top score: ${riskTradersJson.data[0].risk_score})`
+    );
+
+    console.log('\n--- 7. Consumer Complaint Ingestion & Dynamic Risk Escalation ---');
+
+    // Test 7.1: Submit consumer complaint via POST /api/complaints
+    const complaintRes = await makeRequest({
+      hostname: '127.0.0.1',
+      port: PORT,
+      path: '/api/complaints',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }, {
+      license_number: 'LMO/2026/10003',
+      complaint_category: 'Short-Weighing / Calibration Bias',
+      description: 'Grain depot platform scale suspected of under-weighing flour bags by 500g.',
+      observed_discrepancy: '500g shortfall per 50kg bag',
+      contact_number: '+91 99887 76655',
+    });
+
+    const complaintJson = complaintRes.json();
+    assert(
+      complaintRes.statusCode === 201 &&
+      complaintJson &&
+      complaintJson.complaint_id &&
+      complaintJson.complaint_id.startsWith('DOCA-CMP-2026-'),
+      `Consumer complaint registered under Rule 27 citizen grievance protocol: ${complaintJson?.complaint_id}`
+    );
+
+    // Test 7.2: Query complaints list for trader
+    const getComplaintsRes = await makeRequest({
+      hostname: '127.0.0.1',
+      port: PORT,
+      path: '/api/complaints/LMO%2F2026%2F10003',
+      method: 'GET',
+    });
+    const getComplaintsJson = getComplaintsRes.json();
+    assert(
+      getComplaintsRes.statusCode === 200 &&
+      getComplaintsJson.count >= 1 &&
+      getComplaintsJson.data[0].complaint_category === 'Short-Weighing / Calibration Bias',
+      'Citizen complaints retrieved successfully by establishment license number'
+    );
+
+    console.log('\n--- 8. Physical Lead Seal Authenticity & Cryptographic Verification ---');
+
+    // Test 8.1: Authentic physical seal match
+    const validSealRes = await makeRequest({
+      hostname: '127.0.0.1',
+      port: PORT,
+      path: '/api/certificate/LMO%2F2026%2F10001/verify-seal',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }, {
+      seal_number: 'SEAL-LMO-2026-10001-IND',
+    });
+    const validSealJson = validSealRes.json();
+    assert(
+      validSealRes.statusCode === 200 &&
+      validSealJson.status === 'SEAL_AUTHENTIC' &&
+      validSealJson.is_authentic === true,
+      'Physical lead seal number verified against statutory hash (Status: SEAL_AUTHENTIC)'
+    );
+
+    // Test 8.2: Tampered / mismatched seal detection
+    const tamperedSealRes = await makeRequest({
+      hostname: '127.0.0.1',
+      port: PORT,
+      path: '/api/certificate/LMO%2F2026%2F10001/verify-seal',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }, {
+      seal_number: 'SEAL-TAMPERED-FAKE-999',
+    });
+    const tamperedSealJson = tamperedSealRes.json();
+    assert(
+      tamperedSealRes.statusCode === 200 &&
+      tamperedSealJson.status === 'TAMPER_SUSPECTED' &&
+      tamperedSealJson.is_authentic === false,
+      'Mismatched physical seal flagged as TAMPER_SUSPECTED with critical alert notice'
+    );
+
+    console.log('\n--- 9. Predictive Risk-Based Officer Auto-Assignment ---');
+
+    // Test 9.1: Auto-assign high risk traders
+    const autoAssignRes = await makeRequest({
+      hostname: '127.0.0.1',
+      port: PORT,
+      path: '/api/traders/auto-assign-risk',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer admin-officer-token-2026',
+      },
+    }, { district: 'Hisar' });
+
+    const autoAssignJson = autoAssignRes.json();
+    assert(
+      autoAssignRes.statusCode === 200 &&
+      autoAssignJson.success === true &&
+      autoAssignJson.count > 0 &&
+      autoAssignJson.assignments.length > 0,
+      `Auto-assigned ${autoAssignJson?.count} high-risk establishments to officers using Predictive Scheduling`
+    );
+
     console.log('\n===========================================================');
     console.log(`📊 SECURITY & SCALE TEST SUMMARY: ${passed}/${total} TESTS PASSED (100% SUCCESS)`);
     console.log('===========================================================');

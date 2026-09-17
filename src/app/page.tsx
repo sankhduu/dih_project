@@ -33,6 +33,13 @@ import {
   RotateCcw,
   Download,
   Activity,
+  Zap,
+  Layers,
+  Lock,
+  Smartphone,
+  ChevronDown,
+  ChevronUp,
+  Code2,
 } from 'lucide-react';
 
 interface TraderSummary {
@@ -51,6 +58,7 @@ export default function HomePage() {
   const { currentUser, deficiencyMemos, resetToDefaultData } = useMetrologyStore();
   const [activeTab, setActiveTab] = useState<string>('analytics-dashboard');
   const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
+  const [showInteroperabilitySpecs, setShowInteroperabilitySpecs] = useState<boolean>(false);
 
   // Stats state from API / Supabase
   const [traders, setTraders] = useState<TraderSummary[]>([]);
@@ -502,6 +510,133 @@ export default function HomePage() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* ========================================================================= */}
+            {/* STRATEGIC ROADMAP & eMAAP NATIONAL INTEROPERABILITY ARCHITECTURE */}
+            {/* ========================================================================= */}
+            <div className="bg-gradient-to-br from-[#002B49] via-[#003860] to-[#001D33] rounded-3xl p-6 sm:p-8 text-white shadow-xl space-y-6 border border-slate-700/50">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-white/10 pb-6">
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-[11px] font-bold uppercase tracking-wider mb-2">
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>National Architecture Integration (SIH26036)</span>
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                    e-Māpan 2.0 &times; eMaap Interoperability Gateway
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-300 max-w-2xl mt-1">
+                    Positioned not as a competing silo, but as the field-verification & enforcement muscle that powers the National Legal Metrology Portal (eMaap).
+                  </p>
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-xs px-4 py-2.5 rounded-2xl border border-white/15 text-center shrink-0">
+                  <span className="text-[10px] uppercase font-bold text-amber-300 block">Core Architectural Tenet</span>
+                  <span className="font-mono text-xs font-black text-white">eMaap (Brain) + e-Māpan (Muscle)</span>
+                </div>
+              </div>
+
+              {/* 4 Strategic Pillars Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Pillar 1: eMaap API Gateway */}
+                <div className="bg-white/5 hover:bg-white/10 p-5 rounded-2xl border border-white/10 transition-colors space-y-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-amber-400/20 text-amber-300 flex items-center justify-center font-bold">
+                    <RefreshCw className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-bold text-sm text-white">eMaap Sync Adapter</h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Bidirectional synchronization adapter pulling approved licensing records from NIC eMaap and pushing verified stamping logs and cryptographic seal digests.
+                  </p>
+                  <span className="inline-block text-[10px] font-mono text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+                    REST / JSON Schema Compliant
+                  </span>
+                </div>
+
+                {/* Pillar 2: DigiLocker Statutory Vault */}
+                <div className="bg-white/5 hover:bg-white/10 p-5 rounded-2xl border border-white/10 transition-colors space-y-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-blue-400/20 text-blue-300 flex items-center justify-center font-bold">
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-bold text-sm text-white">DigiLocker Integration</h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Automatic issuance of Schedule IX (Form V) verification certificates to trader DigiLocker accounts via the National Document Exchange API.
+                  </p>
+                  <span className="inline-block text-[10px] font-mono text-blue-300 bg-blue-400/10 px-2 py-0.5 rounded border border-blue-400/20">
+                    IT Act 2000 Sec 3A DSC
+                  </span>
+                </div>
+
+                {/* Pillar 3: Officer Anomaly Analytics */}
+                <div className="bg-white/5 hover:bg-white/10 p-5 rounded-2xl border border-white/10 transition-colors space-y-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-rose-400/20 text-rose-300 flex items-center justify-center font-bold">
+                    <Activity className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-bold text-sm text-white">Anti-Corruption Analytics</h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Real-time outlier detection flagging inspection speed anomalies (&lt;3 min stamping), geographic clustering bias, and mock GPS location spoofing attempts.
+                  </p>
+                  <span className="inline-block text-[10px] font-mono text-rose-300 bg-rose-400/10 px-2 py-0.5 rounded border border-rose-400/20">
+                    Heuristic Anomaly Engine
+                  </span>
+                </div>
+
+                {/* Pillar 4: Rural Mandi SMS Fallback */}
+                <div className="bg-white/5 hover:bg-white/10 p-5 rounded-2xl border border-white/10 transition-colors space-y-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-400/20 text-emerald-300 flex items-center justify-center font-bold">
+                    <Smartphone className="w-5 h-5" />
+                  </div>
+                  <h4 className="font-bold text-sm text-white">Vernacular Mandi Fallback</h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Voice-guided inspection workflows and SMS/WhatsApp bilingual verification receipts in Hindi and regional languages for APMC grain yards.
+                  </p>
+                  <span className="inline-block text-[10px] font-mono text-emerald-300 bg-emerald-400/10 px-2 py-0.5 rounded border border-emerald-400/20">
+                    Multi-Lingual Offline Layer
+                  </span>
+                </div>
+              </div>
+
+              {/* Collapsible Interoperability Spec Viewer */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowInteroperabilitySpecs((prev) => !prev)}
+                  className="w-full px-4 py-3 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/15 flex items-center justify-between text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Code2 className="w-4 h-4 text-amber-400" />
+                    <span>View eMaap National Gateway JSON Synchronizer Schema</span>
+                  </span>
+                  {showInteroperabilitySpecs ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </button>
+
+                {showInteroperabilitySpecs && (
+                  <div className="mt-3 p-4 bg-slate-950/80 rounded-2xl border border-slate-800 font-mono text-[11px] text-emerald-400 overflow-x-auto space-y-2">
+                    <p className="text-slate-400">// POST /api/v1/emaap/sync-verification-event</p>
+                    <pre className="text-slate-200">
+{`{
+  "statutory_portal": "eMaap_National_Legal_Metrology",
+  "gateway_source": "e-Mapan_Field_Enforcement_Engine",
+  "license_number": "HR-LMO-HIS-2026-10001",
+  "verification_payload": {
+    "officer_cadre_id": "CCA-GOI-LMO-HARYANA-084",
+    "timestamp_iso": "${new Date().toISOString()}",
+    "mpe_schedule": "SCHEDULE_VII_OIML_R76",
+    "mpe_result": "PASSED_ZERO_AND_FULL_LOAD",
+    "max_observed_deviation_e": 0.4,
+    "physical_seal_hash": "b21ca0815c0ad50b4457...sha256",
+    "geo_fenced": { "lat": 28.8955, "lng": 76.6066, "mock_spoofed": false },
+    "digilocker_doc_id": "DOCA-DL-HR-2026-981042"
+  },
+  "compliance_status": "STATUTORILY_VERIFIED_RULE_14"
+}`}
+                    </pre>
+                  </div>
+                )}
               </div>
             </div>
           </div>
