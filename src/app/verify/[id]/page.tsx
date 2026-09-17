@@ -4,6 +4,7 @@ import React, { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMetrologyStore } from '@/lib/store';
 import { OfficialCertificateView } from '@/components/certificates/OfficialCertificateView';
+import { Certificate } from '@/types/metrology';
 import { Footer } from '@/components/layout/Footer';
 import {
   ShieldCheck,
@@ -38,7 +39,24 @@ export default function VerifyPage({ params }: { params: Promise<{ id: string }>
       c.instrument.serialNumber.toUpperCase() === certNumber
   );
 
-  const [traderData, setTraderData] = useState<any>(null);
+interface TraderRecord {
+  id?: string | number;
+  license_number?: string;
+  trader_name?: string;
+  shop_name?: string;
+  owner_name?: string;
+  instrument_type?: string;
+  district?: string;
+  assigned_officer?: string;
+  inspection_status?: string;
+  canonical_seal_number?: string;
+  seal_hash?: string;
+  risk_score?: number;
+  risk_tier?: string;
+  complaints_count?: number;
+}
+
+  const [traderData, setTraderData] = useState<TraderRecord | null>(null);
   const [isLoadingTrader, setIsLoadingTrader] = useState(false);
 
   // Physical Seal Verification State
@@ -81,30 +99,31 @@ export default function VerifyPage({ params }: { params: Promise<{ id: string }>
   }, [rawCertId]);
 
   // Construct synthetic certificate if found via backend API trader record
+  const licNum = traderData?.license_number || rawCertId;
   const effectiveCert =
     storeCert ||
     (traderData
       ? {
-          id: traderData.license_number,
-          certificateNumber: traderData.license_number,
+          id: licNum,
+          certificateNumber: licNum,
           applicationId: `APP-${traderData.id || 101}`,
-          applicationNumber: `DOCA-APP-${traderData.license_number.replace(/[^a-zA-Z0-9]/g, '')}`,
+          applicationNumber: `DOCA-APP-${licNum.replace(/[^a-zA-Z0-9]/g, '')}`,
           instrumentId: `INST-${traderData.id || 101}`,
           instrument: {
             id: `INST-${traderData.id || 101}`,
             ownerId: `OWN-${traderData.id || 101}`,
             ownerName: traderData.owner_name || 'Authorized Trader',
-            businessName: traderData.trader_name || traderData.shop_name,
+            businessName: traderData.trader_name || traderData.shop_name || 'Commercial Shop',
             category: 'ELECTRONIC_COUNTER_SCALE',
             categoryName: traderData.instrument_type || 'Commercial Weighing Instrument',
             accuracyClass: 'CLASS_III',
             make: 'National Metrology Standard',
             model: 'e-Series Industrial 2026',
-            serialNumber: traderData.license_number,
+            serialNumber: licNum,
             maxCapacity: '50 kg',
             minCapacity: '100 g',
             verificationScaleInterval: 'e = 5 g',
-            installationAddress: `${traderData.shop_name || traderData.trader_name}, Main Commercial Corridor`,
+            installationAddress: `${traderData.shop_name || traderData.trader_name || 'Commercial Shop'}, Main Commercial Corridor`,
             district: traderData.district || 'Hisar',
             state: 'Haryana',
             pinCode: '125001',
@@ -113,7 +132,7 @@ export default function VerifyPage({ params }: { params: Promise<{ id: string }>
           },
           ownerId: `OWN-${traderData.id || 101}`,
           ownerName: traderData.owner_name || 'Authorized Trader',
-          businessName: traderData.trader_name || traderData.shop_name,
+          businessName: traderData.trader_name || traderData.shop_name || 'Commercial Shop',
           issuedByOfficerId: 'LMO-OFFICER-001',
           issuedByOfficerName: traderData.assigned_officer || 'Inspector Rajesh Varma (Zone-1)',
           issuingAuthority: `Office of the Controller of Legal Metrology, ${traderData.district || 'Haryana'} District`,
@@ -270,7 +289,7 @@ export default function VerifyPage({ params }: { params: Promise<{ id: string }>
             </div>
 
             {/* Official Certificate Paper View */}
-            <OfficialCertificateView certificate={effectiveCert as any} />
+            <OfficialCertificateView certificate={effectiveCert as unknown as Certificate} />
 
             {/* Interactive Physical Seal Tamper Re-Check Card */}
             <div className="bg-white rounded-2xl border border-slate-300 p-6 shadow-md space-y-4">

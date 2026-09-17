@@ -616,7 +616,7 @@ export default function HomePage() {
 
                 {showInteroperabilitySpecs && (
                   <div className="mt-3 p-4 bg-slate-950/80 rounded-2xl border border-slate-800 font-mono text-[11px] text-emerald-400 overflow-x-auto space-y-2">
-                    <p className="text-slate-400">// POST /api/v1/emaap/sync-verification-event</p>
+                    <p className="text-slate-400">{"// POST /api/v1/emaap/sync-verification-event"}</p>
                     <pre className="text-slate-200">
 {`{
   "statutory_portal": "eMaap_National_Legal_Metrology",
