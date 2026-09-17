@@ -338,7 +338,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '✨ Mohan Lal reappeared in queue! (3-refresh reset)',
+                    '✨ Mohan Lal assigned to pending queue',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -356,16 +356,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await Future.delayed(const Duration(milliseconds: 500));
       if (mounted) {
         setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Queue refreshed ($refreshCount/3 pulls to restore Mohan Lal)',
-              style: const TextStyle(fontSize: 12),
-            ),
-            duration: const Duration(seconds: 1),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
       }
       return;
     }
