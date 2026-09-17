@@ -69,9 +69,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     try {
-      // Direct live REST fetch from Supabase traders_list table matching Pending_LMO (or equivalents)
+      // Direct live REST fetch from Supabase traders table matching Pending_LMO (or equivalents)
       final List<dynamic> response = await Supabase.instance.client
-          .from('traders_list')
+          .from('traders')
           .select()
           .or('status.eq.Pending_LMO,status.eq.Pending_Inspection,status.eq.Pending');
 
