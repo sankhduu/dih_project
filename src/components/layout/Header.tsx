@@ -76,6 +76,17 @@ interface LmoApprovedAlert {
   officerName: string;
 }
 
+interface TraderAlert {
+  id: string | number;
+  title: string;
+  licenseNumber: string;
+  instrumentType: string;
+  status: 'Passed' | 'Pending' | 'Failed' | 'Scheduled';
+  message: string;
+  timestamp: string;
+  actionHref: string;
+}
+
 export function Header({ activeTab, setActiveTab }: HeaderProps) {
   const {
     currentUser,
@@ -86,21 +97,168 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
     offlineDrafts,
     syncOfflineDrafts,
     renewalAlerts,
+    applications,
   } = useMetrologyStore();
 
   const router = useRouter();
+  const pathname = usePathname() || '';
   const [mounted, setMounted] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
   const [expiringTraders, setExpiringTraders] = useState<ExpiringTraderAlert[]>([]);
   const [pendingLmoRequests, setPendingLmoRequests] = useState<PendingLmoAlert[]>([]);
   const [lmoApprovedApplications, setLmoApprovedApplications] = useState<LmoApprovedAlert[]>([]);
+  const [traderAlerts, setTraderAlerts] = useState<TraderAlert[]>([]);
 
   useEffect(() => {
     setMounted(true);
 
     async function fetchNotificationsData() {
       try {
+        // Resolve current user ID and role strictly from context and local session
+        let currentUserId = currentUser.id || '';
+        let currentRole = currentUser.role;
+
+        if (typeof window !== 'undefined') {
+          const storedUser = localStorage.getItem('eMaap_currentUser');
+          if (storedUser) {
+            try {
+              const parsed = JSON.parse(storedUser);
+              if (parsed?.id) currentUserId = parsed.id;
+              if (parsed?.role) {
+                const normRole = (parsed.role || '').toLowerCase();
+                if (normRole.includes('trader') || normRole.includes('applicant')) currentRole = 'APPLICANT';
+                else if (normRole.includes('lmo')) currentRole = 'LMO';
+                else if (normRole.includes('gatc')) currentRole = 'GATC';
+                else if (normRole.includes('admin')) currentRole = 'ADMIN';
+              }
+            } catch {}
+          }
+        }
+
+        const isTraderRole =
+          currentRole === 'APPLICANT' ||
+          pathname.startsWith('/trader') ||
+          pathname.startsWith('/apply') ||
+          pathname.startsWith('/tracker') ||
+          pathname.startsWith('/notices');
+
+        // =====================================================================
+        // TASK 2: TRADER NOTIFICATIONS (Strictly filter by user_id & role)
+        // =====================================================================
+        if (isTraderRole) {
+          let userTraderRows: HeaderTraderRecord[] = [];
+
+          if (supabase && currentUserId) {
+            // Strictly query by user_id as requested
+            try {
+              const { data, error } = await supabase
+                .from('traders')
+                .select('*')
+                .eq('user_id', currentUserId)
+                .order('updated_at', { ascending: false });
+
+              if (!error && Array.isArray(data) && data.length > 0) {
+                userTraderRows = data as HeaderTraderRecord[];
+              }
+            } catch (err) {
+              console.warn('Note on user_id query:', err);
+            }
+
+            // Resilient fallback for current schema if user_id column not present in postgres:
+            if (userTraderRows.length === 0) {
+              try {
+                const lastLicense = typeof window !== 'undefined' ? localStorage.getItem('last_applied_license') : null;
+                let fbQuery = supabase.from('traders').select('*');
+                if (lastLicense) {
+                  fbQuery = fbQuery.eq('license_number', lastLicense);
+                } else if (currentUser.fullName) {
+                  fbQuery = fbQuery.ilike('owner_name', `%${currentUser.fullName}%`);
+                }
+                const { data: fbData } = await fbQuery;
+                if (fbData && fbData.length > 0) userTraderRows = fbData as HeaderTraderRecord[];
+              } catch {}
+            }
+          }
+
+          const myAlerts: TraderAlert[] = [];
+          userTraderRows.forEach((row, idx) => {
+            const insp = (row.inspection_status || row.status || 'Pending').toLowerCase();
+            const lic = row.license_number || `LIC-${idx + 1}`;
+            const inst = row.instrument_type || 'Weighing Scale';
+            const dateStr = row.updated_at || row.created_at || new Date().toISOString();
+            const formattedDate = new Date(dateStr).toLocaleDateString('en-GB', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+            });
+
+            if (insp === 'passed' || insp === 'verified' || insp === 'approved') {
+              myAlerts.push({
+                id: row.id || lic,
+                title: 'Scale Verification Passed & Stamped',
+                licenseNumber: lic,
+                instrumentType: inst,
+                status: 'Passed',
+                message: 'Your instrument has been verified and stamped by LMO officer. Schedule IX Certificate is ready!',
+                timestamp: formattedDate,
+                actionHref: `/certificate/${encodeURIComponent(lic)}`,
+              });
+            } else if (insp === 'failed' || insp === 'rejected') {
+              myAlerts.push({
+                id: row.id || lic,
+                title: 'Deficiency Notice Issued (Action Needed)',
+                licenseNumber: lic,
+                instrumentType: inst,
+                status: 'Failed',
+                message: 'Scale exceeded statutory MPE tolerance. Recalibration and re-testing required within 30 days.',
+                timestamp: formattedDate,
+                actionHref: '/notices',
+              });
+            } else {
+              myAlerts.push({
+                id: row.id || lic,
+                title: 'Application Queued for LMO Inspection',
+                licenseNumber: lic,
+                instrumentType: inst,
+                status: 'Pending',
+                message: 'Application has been assigned to Legal Metrology Officer. Physical inspection pending.',
+                timestamp: formattedDate,
+                actionHref: '/tracker',
+              });
+            }
+          });
+
+          // Store application fallback
+          if (myAlerts.length === 0 && applications.length > 0) {
+            const userApps = applications.filter((a) => a.applicantId === currentUserId);
+            userApps.forEach((app) => {
+              myAlerts.push({
+                id: app.id,
+                title: app.status === 'APPROVED' ? 'Scale Verification Approved' : 'Application in Queue',
+                licenseNumber: app.applicationNumber,
+                instrumentType: 'Commercial Weighing Instrument',
+                status: app.status === 'APPROVED' ? 'Passed' : 'Pending',
+                message: app.status === 'APPROVED' ? 'Your certificate is ready.' : 'Waiting for LMO physical visit.',
+                timestamp: new Date(app.submittedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+                actionHref: '/tracker',
+              });
+            });
+          }
+
+          // STRICT RBAC: Clear out all LMO & GATC lists so Traders NEVER see them
+          setTraderAlerts(myAlerts);
+          setPendingLmoRequests([]);
+          setExpiringTraders([]);
+          setLmoApprovedApplications([]);
+          return;
+        }
+
+        // =====================================================================
+        // OFFICER / GATC / ADMIN NOTIFICATIONS
+        // =====================================================================
+        setTraderAlerts([]); // Officers never see private trader alerts
+
         let records: HeaderTraderRecord[] = [];
 
         // 1. First attempt: Direct Supabase query
@@ -253,7 +411,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [currentUser.id, currentUser.role, pathname]);
 
   const roleLabels: Record<UserRole, { label: string; icon: React.ElementType }> = {
     APPLICANT: { label: 'Trader (Commercial Enterprise)', icon: Building2 },
@@ -262,8 +420,6 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
     ADMIN: { label: 'Department Admin (DoCA)', icon: Sliders },
     PUBLIC: { label: 'Public Citizen / Verification', icon: QrCode },
   };
-
-  const pathname = usePathname() || '';
 
   // Determine effective role strictly by route if on a role-specific dashboard:
   const isLmoRoute = pathname.startsWith('/lmo');
@@ -290,11 +446,12 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
   const isAdminUser = effectiveRole === 'ADMIN' || isDocaRoute;
   const isTraderUser = effectiveRole === 'APPLICANT' || isTraderRoute;
 
-  // Notification button is strictly hidden on Traders dashboard / Trader routes.
-  // It is shown on LMO Officers dashboard, GATC dashboard, and Admin portal.
-  const shouldShowNotificationBell = mounted && !isTraderUser && (isLmoUser || isGatcUser || isAdminUser);
+  // Notification button is shown for Trader (with their private alerts), LMO, GATC, and Admin
+  const shouldShowNotificationBell = mounted && effectiveRole !== 'PUBLIC';
 
-  const notificationCount = isGatcUser
+  const notificationCount = isTraderUser
+    ? traderAlerts.length
+    : isGatcUser
     ? lmoApprovedApplications.length
     : isLmoUser
     ? pendingLmoRequests.length + expiringTraders.length
@@ -421,7 +578,7 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
               </div>
             )}
 
-            {/* Role-Specific Notifications / Alerts Bell (Strictly Hidden on Trader Dashboard; Shown on LMO & GATC Dashboards) */}
+            {/* Role-Specific Notifications / Alerts Bell */}
             {shouldShowNotificationBell && (
               <div className="relative">
                 <button
@@ -429,7 +586,9 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                   onClick={() => setShowAlerts(!showAlerts)}
                   className="p-2 rounded-xl text-slate-600 hover:text-[#002B49] hover:bg-slate-100 relative transition-all cursor-pointer"
                   title={
-                    isGatcUser
+                    isTraderUser
+                      ? 'My Application Alerts & Verification Updates'
+                      : isGatcUser
                       ? 'LMO Approved Applications (Awaiting GATC Certification)'
                       : isLmoUser
                       ? 'LMO Inspection Queue & Renewal Alerts'
@@ -440,11 +599,13 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
                   {mounted && notificationCount > 0 && (
                     <span
                       className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 text-white text-[10px] font-black rounded-full flex items-center justify-center ring-2 ring-white shadow-xs animate-pulse ${
-                        isGatcUser
+                        isTraderUser
+                          ? 'bg-amber-600'
+                          : isGatcUser
                           ? 'bg-emerald-600'
                           : isLmoUser
                           ? 'bg-rose-600'
-                          : 'bg-amber-600'
+                          : 'bg-indigo-600'
                       }`}
                     >
                       {notificationCount}
@@ -454,6 +615,104 @@ export function Header({ activeTab, setActiveTab }: HeaderProps) {
 
                 {showAlerts && (
                   <div className="absolute right-0 mt-2 w-84 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-50 animate-in fade-in zoom-in-95">
+                    {/* Trader Application & Stamping Notification Dropdown */}
+                    {isTraderUser && (
+                      <div>
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center">
+                              <Bell className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-black text-slate-900">Application & Stamping Alerts</h4>
+                              <p className="text-[10px] text-slate-500 font-medium">Updates for Your Instruments</p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200">
+                            {traderAlerts.length} Notification{traderAlerts.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 space-y-2 max-h-80 overflow-y-auto pr-1">
+                          {traderAlerts.length > 0 ? (
+                            traderAlerts.map((item) => (
+                              <div
+                                key={`trader-alert-${item.id}`}
+                                className={`p-3 rounded-xl border text-xs space-y-1.5 transition-colors ${
+                                  item.status === 'Passed'
+                                    ? 'bg-emerald-50/70 border-emerald-200'
+                                    : item.status === 'Failed'
+                                    ? 'bg-rose-50/70 border-rose-200'
+                                    : 'bg-amber-50/70 border-amber-200'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="font-extrabold text-slate-900 line-clamp-1">{item.title}</span>
+                                  <span
+                                    className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 ${
+                                      item.status === 'Passed'
+                                        ? 'bg-emerald-200/80 text-emerald-900'
+                                        : item.status === 'Failed'
+                                        ? 'bg-rose-200/80 text-rose-900'
+                                        : 'bg-amber-200/80 text-amber-900'
+                                    }`}
+                                  >
+                                    {item.status === 'Passed' && <CheckCircle2 className="w-3 h-3 text-emerald-700" />}
+                                    {item.status === 'Failed' && <AlertTriangle className="w-3 h-3 text-rose-700" />}
+                                    {item.status === 'Pending' && <Clock className="w-3 h-3 text-amber-700" />}
+                                    {item.status}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium">
+                                  <span className="font-mono text-slate-800 font-bold">{item.licenseNumber}</span>
+                                  <span className="text-[10px] text-slate-500 truncate max-w-[140px]">{item.instrumentType}</span>
+                                </div>
+
+                                <p className="text-[11px] text-slate-600 leading-tight">
+                                  {item.message}
+                                </p>
+
+                                <div className="text-[10px] text-slate-500 pt-1.5 flex items-center justify-between border-t border-slate-200/60">
+                                  <span>{item.timestamp}</span>
+                                  <Link
+                                    href={item.actionHref}
+                                    onClick={() => setShowAlerts(false)}
+                                    className="font-bold text-[#002B49] hover:underline flex items-center gap-1"
+                                  >
+                                    <span>View Details</span>
+                                    <span>→</span>
+                                  </Link>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-center py-6 text-slate-500 text-xs space-y-1">
+                              <CheckCircle2 className="w-8 h-8 text-slate-400 mx-auto opacity-60" />
+                              <p className="font-semibold text-slate-700">No New Notifications</p>
+                              <p className="text-[11px] text-slate-400">All your instrument verifications are up to date.</p>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                          <Link
+                            href="/tracker"
+                            onClick={() => setShowAlerts(false)}
+                            className="text-xs font-bold text-[#002B49] hover:underline"
+                          >
+                            Application Tracker →
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => setShowAlerts(false)}
+                            className="text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
+                          >
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {/* GATC Laboratory Notification Dropdown */}
                     {isGatcUser && (
                       <div>

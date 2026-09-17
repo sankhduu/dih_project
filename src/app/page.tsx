@@ -58,13 +58,14 @@ export default function HomePage() {
   const { currentUser, deficiencyMemos, resetToDefaultData } = useMetrologyStore();
   const [activeTab, setActiveTab] = useState<string>('analytics-dashboard');
   const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
+  const [userRole, setUserRole] = useState<string>('');
   const [showInteroperabilitySpecs, setShowInteroperabilitySpecs] = useState<boolean>(false);
 
   // Stats state from API / Supabase
   const [traders, setTraders] = useState<TraderSummary[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Authentication check for first-time / unauthenticated visitors
+  // Authentication check & strict role resolution from Supabase session or auth context
   useEffect(() => {
     async function checkAuth() {
       try {
@@ -76,14 +77,40 @@ export default function HomePage() {
           router.replace('/login');
           return;
         }
+
+        let effectiveRole = currentUser.role || '';
+        if (storedUser) {
+          try {
+            const parsed = JSON.parse(storedUser);
+            if (parsed?.role) effectiveRole = parsed.role;
+          } catch {}
+        }
+        if (data?.session?.user) {
+          const metaRole = data.session.user.user_metadata?.role;
+          if (metaRole) effectiveRole = metaRole;
+        }
+
+        const normalizedRole = (effectiveRole || '').toLowerCase().trim();
+        setUserRole(normalizedRole);
+
+        // If user is a trader, default tab to 'applicant-dashboard'
+        if (normalizedRole === 'trader' || normalizedRole === 'applicant' || currentUser.role === 'APPLICANT') {
+          setActiveTab('applicant-dashboard');
+        }
       } catch {
         router.replace('/login');
         return;
+      } finally {
+        setCheckingAuth(false);
       }
-      setCheckingAuth(false);
     }
     checkAuth();
-  }, [router]);
+  }, [currentUser.role, router]);
+
+  const isTrader =
+    userRole === 'trader' ||
+    userRole === 'applicant' ||
+    currentUser.role === 'APPLICANT';
 
   useEffect(() => {
     async function fetchStats() {
@@ -124,40 +151,129 @@ export default function HomePage() {
 
   const userDeficiencies = deficiencyMemos.filter((m) => m.ownerId === currentUser.id);
 
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-xs text-slate-500 font-semibold">
+        <div className="flex items-center gap-2">
+          <RefreshCw className="w-4 h-4 animate-spin text-[#002B49]" />
+          <span>Verifying portal session...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 text-slate-900 font-sans">
       <Header activeTab={activeTab} setActiveTab={setActiveTab} />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Reset State & View Indicator */}
-        <div className="flex items-center justify-between pb-2 border-b border-slate-200 text-xs text-slate-500">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-700">Active Portal View:</span>
-            <span className="bg-[#002B49] text-white px-2.5 py-0.5 rounded-md font-mono text-[11px] font-bold">
-              {activeTab === 'analytics-dashboard' ? 'National LMO Analytics Dashboard' : activeTab}
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                if (confirm('Reset state to initial seed data?')) {
-                  resetToDefaultData();
-                }
-              }}
-              className="text-slate-500 hover:text-slate-900 flex items-center gap-1 transition-colors text-[11px] cursor-pointer"
-              title="Reset to fresh seed state"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Reset State</span>
-            </button>
-          </div>
-        </div>
-
-        {/* ========================================================================= */}
-        {/* MAIN ANALYTICS DASHBOARD (DEFAULT VIEW) */}
-        {/* ========================================================================= */}
-        {activeTab === 'analytics-dashboard' && (
+        {/* If user is Trader, render ONLY Trader Dashboard components (My Instruments, Application Tracker) */}
+        {isTrader ? (
           <div className="space-y-8 animate-in fade-in duration-300">
+            {/* Trader Sub-Navigation Tabs */}
+            <div className="flex items-center gap-3 border-b border-slate-200 pb-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('applicant-dashboard')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                  activeTab === 'applicant-dashboard'
+                    ? 'bg-[#002B49] text-white shadow-xs'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <Building2 className="w-4 h-4 text-amber-400" />
+                <span>My Instruments &amp; Vault</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('applicant-applications')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                  activeTab === 'applicant-applications'
+                    ? 'bg-[#002B49] text-white shadow-xs'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <FileSpreadsheet className="w-4 h-4 text-amber-400" />
+                <span>Application Tracker</span>
+              </button>
+
+              {userDeficiencies.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('applicant-deficiencies')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'applicant-deficiencies'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'bg-white text-rose-600 hover:bg-rose-50 border border-rose-200'
+                  }`}
+                >
+                  <FileWarning className="w-4 h-4" />
+                  <span>Deficiency Notices ({userDeficiencies.length})</span>
+                </button>
+              )}
+            </div>
+
+            {/* STRICTLY RENDER ONLY TRADER DASHBOARD COMPONENTS */}
+            {activeTab === 'applicant-applications' ? (
+              <ApplicationTracker />
+            ) : activeTab === 'applicant-deficiencies' ? (
+              <div className="space-y-6">
+                <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs">
+                  <h2 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+                    <FileWarning className="w-6 h-6 text-rose-600" />
+                    <span>Statutory Deficiency Notices (Form VI)</span>
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Instruments requiring repair &amp; recalibration before statutory cure deadline
+                  </p>
+                </div>
+
+                {userDeficiencies.length > 0 ? (
+                  userDeficiencies.map((memo) => (
+                    <OfficialDeficiencyMemoView key={memo.id} memo={memo} />
+                  ))
+                ) : (
+                  <div className="bg-white rounded-3xl p-12 text-center text-slate-400 border border-slate-200">
+                    No active deficiency notices for your registered instruments. All equipment in compliance!
+                  </div>
+                )}
+              </div>
+            ) : (
+              <ApplicantDashboard />
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Reset State & View Indicator (Strictly hidden from Traders) */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200 text-xs text-slate-500">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-700">Active Portal View:</span>
+                <span className="bg-[#002B49] text-white px-2.5 py-0.5 rounded-md font-mono text-[11px] font-bold">
+                  {activeTab === 'analytics-dashboard' ? 'National LMO Analytics Dashboard' : activeTab}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    if (confirm('Reset state to initial seed data?')) {
+                      resetToDefaultData();
+                    }
+                  }}
+                  className="text-slate-500 hover:text-slate-900 flex items-center gap-1 transition-colors text-[11px] cursor-pointer"
+                  title="Reset to fresh seed state"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Reset State</span>
+                </button>
+              </div>
+            </div>
+
+            {/* ========================================================================= */}
+            {/* MAIN ANALYTICS DASHBOARD (DEFAULT VIEW FOR OFFICERS / ADMINS) */}
+            {/* ========================================================================= */}
+            {activeTab === 'analytics-dashboard' && (
+              <div className="space-y-8 animate-in fade-in duration-300">
             {/* Hero Banner with Quick Action to /admin/traders */}
             <div className="relative rounded-3xl bg-gradient-to-br from-[#002B49] via-[#003B66] to-[#0A192F] text-white p-6 sm:p-10 shadow-xl overflow-hidden">
               <div className="absolute -right-10 -bottom-10 opacity-10 pointer-events-none">
@@ -699,6 +815,8 @@ export default function HomePage() {
         {activeTab === 'admin-audit' && <AuditLogViewer />}
 
         {activeTab === 'public-verify' && <PublicVerificationPortal />}
+          </>
+        )}
       </main>
 
       <Footer />
