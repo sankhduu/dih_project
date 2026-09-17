@@ -36,7 +36,28 @@ import {
   ChevronRight,
   ShieldAlert,
   Bell,
+  Download,
 } from 'lucide-react';
+
+const RAMESH_KUMAR_DUMMY: TraderRecord = {
+  id: 'DEMO-RAMESH-0042',
+  shop_name: 'Ramesh Kumar General Store',
+  owner_name: 'Ramesh Kumar',
+  license_number: 'HR-LMO-2026-0042',
+  district: 'Hisar',
+  status: 'Pending_GATC',
+  inspection_status: 'Passed',
+  address: 'Shop No. 14, Main Market, Hansi Road, Hisar - 125001',
+  instrument_type: 'Electronic Counter Scale (Class III)',
+  capacity: '30 kg / e=2g',
+  make_model: 'Essae Teraoka DS-215',
+  latitude: 28.8955,
+  longitude: 76.6066,
+  photo_url: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600&auto=format&fit=crop&q=80',
+  checklist_confirmed: true,
+  lmo_id: 'officer.hisar@gov.in',
+  updated_at: new Date().toISOString(),
+};
 
 const SEED_SHOPS: TraderRecord[] = [
   {
@@ -122,9 +143,26 @@ export default function GatcDashboardPage() {
   // Active view tab: 'gatc-queue' | 'gatc-accreditation'
   const [activeTab, setActiveTab] = useState<'gatc-queue' | 'gatc-accreditation'>('gatc-queue');
 
-  // Master Data State
-  const [shops, setShops] = useState<TraderRecord[]>(SEED_SHOPS);
-  const [loading, setLoading] = useState<boolean>(true);
+  // Task 1: Golden Path Demo Mode State (Pitch Presentation)
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(true);
+  const [isRameshCertified, setIsRameshCertified] = useState<boolean>(false);
+  const [approvingStepText, setApprovingStepText] = useState<string | null>(null);
+
+  // Helper to generate demo shops list
+  const getDemoShops = (certified: boolean): TraderRecord[] => {
+    const ramesh: TraderRecord = {
+      ...RAMESH_KUMAR_DUMMY,
+      status: certified ? 'Approved' : 'Pending_GATC',
+      inspection_status: 'Passed',
+      digital_signature: certified ? 'SHA256-GATC-SEC9-8F92A9C4-HR0042' : undefined,
+      signed_at: certified ? new Date().toISOString() : undefined,
+    };
+    return [ramesh, ...SEED_SHOPS.filter((s) => s.license_number !== 'HR-LMO-2026-0042')];
+  };
+
+  // Master Data State (Initialized to Demo Shops containing Ramesh Kumar)
+  const [shops, setShops] = useState<TraderRecord[]>(() => getDemoShops(false));
+  const [loading, setLoading] = useState<boolean>(false);
   const [flashingRowId, setFlashingRowId] = useState<string | null>(null);
 
   // Filter State: Default to 'Pending_GATC' (Pending Certification Queue)
@@ -154,8 +192,67 @@ export default function GatcDashboardPage() {
     message: '',
   });
 
-  // 1. Initial Data Fetch from Supabase traders (specifically Passed/Pending_GATC rows updated by LMO)
+  // Task 2: Golden Path Fake Approval & Certificate Generation Sequence
+  const handleFakeApprove = async (shop: TraderRecord) => {
+    // 1. Change button text to: 'Verifying LMO Signature...' (Wait 1 second)
+    setApprovingStepText('Verifying LMO Signature...');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // 2. Change text to: 'Generating Schedule IX & QR...' (Wait 1 second)
+    setApprovingStepText('Generating Schedule IX & QR...');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // 3. Change text to: 'Appending SHA-256 Hash...' (Wait 1 second)
+    setApprovingStepText('Appending SHA-256 Hash...');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // 4. Show Success Toast: 'Certificate Officially Issued'
+    setApprovingStepText(null);
+    setSyncToast({
+      visible: true,
+      title: 'Certificate Officially Issued',
+      message: `Schedule IX Certificate with cryptographic QR & SHA-256 seal issued for ${shop.shop_name} (${shop.license_number}).`,
+      type: 'success',
+    });
+    setTimeout(() => setSyncToast((prev) => ({ ...prev, visible: false })), 6000);
+
+    // 5. Set setIsRameshCertified(true)
+    setIsRameshCertified(true);
+
+    // Update local shops state immediately
+    setShops((prev) =>
+      prev.map((s) => {
+        const isTarget =
+          s.id === shop.id ||
+          s.license_number === shop.license_number ||
+          s.shop_name.toLowerCase().includes('ramesh');
+        if (isTarget) {
+          return {
+            ...s,
+            status: 'Approved',
+            inspection_status: 'Passed',
+            digital_signature: 'SHA256-GATC-SEC9-8F92A9C4-HR0042',
+            signed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+        }
+        return s;
+      })
+    );
+
+    // Dismiss review drawer if open
+    setSelectedReviewShop(null);
+    setShowRejectForm(false);
+  };
+
+  // 1. Initial Data Fetch from Supabase traders (strictly bypassed in Demo Mode)
   const fetchShops = async () => {
+    if (isDemoMode) {
+      setLoading(false);
+      setShops(getDemoShops(isRameshCertified));
+      return;
+    }
+
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -201,11 +298,17 @@ export default function GatcDashboardPage() {
   };
 
   useEffect(() => {
-    fetchShops();
-  }, []);
+    if (isDemoMode) {
+      setShops(getDemoShops(isRameshCertified));
+      setLoading(false);
+    } else {
+      fetchShops();
+    }
+  }, [isDemoMode, isRameshCertified]);
 
-  // 2. Global Real-time Updates (Listening to LMO and Trader changes)
+  // 2. Global Real-time Updates (Listening to LMO and Trader changes, bypassed in Demo Mode)
   useEffect(() => {
+    if (isDemoMode) return;
     const channel = supabase
       .channel('gatc-realtime-listener')
       .on(
@@ -280,14 +383,16 @@ export default function GatcDashboardPage() {
 
     // Heartbeat poll every 4s to guarantee real-time updates without page refresh
     const pollTimer = setInterval(() => {
-      fetchShops();
+      if (!isDemoMode) {
+        fetchShops();
+      }
     }, 4000);
 
     return () => {
       supabase.removeChannel(channel);
       clearInterval(pollTimer);
     };
-  }, []);
+  }, [isDemoMode]);
 
   // Filtered Shops Calculation (Filtered strictly by selectedDistrict, selectedStatus, and searchQuery)
   const filteredShops = useMemo(() => {
@@ -510,6 +615,11 @@ export default function GatcDashboardPage() {
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-400/20 text-emerald-300 text-xs font-bold border border-emerald-400/30">
                 <Award className="w-3.5 h-3.5" />
                 <span>Govt. Approved Test Centre (GATC) • 3-Tier Central Certification Lab</span>
+                {isDemoMode && (
+                  <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-400 text-[#002B49] font-black text-[10px] tracking-wider">
+                    🌟 GOLDEN PATH DEMO
+                  </span>
+                )}
               </div>
               <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                 {currentUser.businessName || 'National Central Metrology & Test Centre (GATC)'}
@@ -522,7 +632,7 @@ export default function GatcDashboardPage() {
                 <span>•</span>
                 <span className="flex items-center gap-1">
                   <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                  <span>Supabase Realtime Channel: Active</span>
+                  <span>Supabase Realtime Channel: {isDemoMode ? 'Bypassed (Demo Mode)' : 'Active'}</span>
                 </span>
                 <span>•</span>
                 <span>Jurisdiction: Haryana (Rohtak &amp; Hisar Districts)</span>
@@ -530,10 +640,24 @@ export default function GatcDashboardPage() {
             </div>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              {/* Golden Path Demo Mode Toggle */}
+              <button
+                onClick={() => setIsDemoMode((prev) => !prev)}
+                className={`inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl font-black text-xs shadow-md transition-all cursor-pointer whitespace-nowrap ${
+                  isDemoMode
+                    ? 'bg-amber-400 hover:bg-amber-300 text-[#002B49] ring-2 ring-amber-300'
+                    : 'bg-white/20 hover:bg-white/30 text-white'
+                }`}
+                title="Toggle Demo Mode / Live Supabase Mode"
+              >
+                <Sparkles className="w-4 h-4 text-amber-900" />
+                <span>{isDemoMode ? '🌟 Demo Mode: ON' : '🌐 Live Mode: ON'}</span>
+              </button>
+
               <button
                 onClick={fetchShops}
                 disabled={loading}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-[#002B49] font-black text-xs shadow-md transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                 <span>Refresh Master Queue</span>
@@ -638,7 +762,7 @@ export default function GatcDashboardPage() {
                 }`}
               >
                 <div className="text-slate-500 text-xs font-semibold flex items-center justify-between">
-                  <span>Approved &amp; Signed</span>
+                  <span>Issued Certificates</span>
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                 </div>
                 <div className="mt-2 text-2xl font-black text-emerald-700">{approvedCount}</div>
@@ -697,7 +821,7 @@ export default function GatcDashboardPage() {
                         {selectedStatus === 'Pending_GATC' || selectedStatus === 'Under_Review'
                           ? 'Pending Certification Queue (Pending_GATC)'
                           : selectedStatus === 'Approved'
-                          ? 'Approved & Digitally Signed Directory'
+                          ? 'Issued Certificates & Digitally Signed Directory'
                           : selectedStatus === 'Rejected'
                           ? 'Rejected Applications & Deficiency Notices'
                           : 'Master Verification Queue'}
@@ -728,7 +852,7 @@ export default function GatcDashboardPage() {
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      Approved ({approvedCount})
+                      Issued Certificates ({approvedCount})
                     </button>
                     <button
                       onClick={() => setSelectedStatus('Rejected')}
@@ -956,25 +1080,70 @@ export default function GatcDashboardPage() {
                             {/* Action Buttons */}
                             <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-end gap-2">
-                                {isUnder ? (
-                                  <button
-                                    onClick={() => setSelectedReviewShop(shop)}
-                                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#002B49] hover:bg-[#003B66] text-white shadow-xs hover:shadow-md transition-all cursor-pointer"
-                                  >
-                                    <PenTool className="w-3.5 h-3.5 text-amber-400" />
-                                    <span>Review &amp; Sign</span>
-                                  </button>
-                                ) : isAppr ? (
-                                  <button
-                                    onClick={() => {
-                                      setSelectedCertificateShop(shop);
-                                      setIsCertificateOpen(true);
-                                    }}
-                                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition-all cursor-pointer"
-                                  >
-                                    <QrCode className="w-3.5 h-3.5 text-amber-300" />
-                                    <span>Certificate</span>
-                                  </button>
+                                {isAppr ? (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        setSyncToast({
+                                          visible: true,
+                                          title: '📥 Certificate Downloaded',
+                                          message: `Schedule_IX_Certificate_${shop.license_number}.pdf downloaded successfully.`,
+                                          type: 'success',
+                                        });
+                                        setTimeout(() => setSyncToast((prev) => ({ ...prev, visible: false })), 4000);
+                                        setSelectedCertificateShop(shop);
+                                        setIsCertificateOpen(true);
+                                      }}
+                                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#002B49] hover:bg-[#003B66] text-white shadow-xs transition-all cursor-pointer"
+                                      title="Download Official Schedule IX PDF"
+                                    >
+                                      <Download className="w-3.5 h-3.5 text-amber-400" />
+                                      <span>Download PDF</span>
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setSelectedCertificateShop(shop);
+                                        setIsCertificateOpen(true);
+                                      }}
+                                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition-all cursor-pointer"
+                                    >
+                                      <QrCode className="w-3.5 h-3.5 text-amber-300" />
+                                      <span>Certificate</span>
+                                    </button>
+                                  </>
+                                ) : (statusNorm === 'pending_gatc' || isUnder) ? (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        if (isDemoMode && (shop.shop_name.toLowerCase().includes('ramesh') || shop.license_number.includes('0042'))) {
+                                          handleFakeApprove(shop);
+                                        } else {
+                                          handleDigitallySignAndApprove(shop);
+                                        }
+                                      }}
+                                      disabled={approvingStepText !== null}
+                                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs hover:shadow-md transition-all cursor-pointer disabled:opacity-75"
+                                    >
+                                      {approvingStepText && (shop.shop_name.toLowerCase().includes('ramesh') || shop.license_number.includes('0042')) ? (
+                                        <>
+                                          <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin" />
+                                          <span>{approvingStepText}</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-amber-300" />
+                                          <span>Approve / Issue Certificate</span>
+                                        </>
+                                      )}
+                                    </button>
+                                    <button
+                                      onClick={() => setSelectedReviewShop(shop)}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#002B49] hover:bg-[#003B66] text-white shadow-xs transition-all cursor-pointer"
+                                    >
+                                      <PenTool className="w-3.5 h-3.5 text-amber-400" />
+                                      <span>Audit</span>
+                                    </button>
+                                  </>
                                 ) : (
                                   <button
                                     onClick={() => setSelectedReviewShop(shop)}
@@ -1095,7 +1264,55 @@ export default function GatcDashboardPage() {
         )}
       </main>
 
-      <Footer />
+      {/* Footer Wrapper with Secret Pitch Reset Trigger */}
+      <div className="relative">
+        <Footer />
+        {/* Task 3: Secret Reset for Next Judge (Bottom Right of Footer) */}
+        <div
+          onClick={() => {
+            setIsRameshCertified(false);
+            setSelectedStatus('Pending_GATC');
+            setSyncToast({
+              visible: true,
+              title: '✨ Demo Queue Reset',
+              message: 'Ramesh Kumar restored to Pending_GATC queue for the next judge demo.',
+              type: 'success',
+            });
+            setTimeout(() => setSyncToast((prev) => ({ ...prev, visible: false })), 3000);
+          }}
+          onDoubleClick={() => {
+            setIsRameshCertified(false);
+            setSelectedStatus('Pending_GATC');
+          }}
+          className="absolute bottom-2 right-2 opacity-0 hover:opacity-10 cursor-default select-none text-[8px] text-slate-800 p-1 z-40"
+          title="Secret Demo Reset"
+        >
+          •
+        </div>
+      </div>
+
+      {/* Screen Corner Secret Reset Target (Bottom-Right Viewport) */}
+      <div
+        onClick={() => {
+          setIsRameshCertified(false);
+          setSelectedStatus('Pending_GATC');
+          setSyncToast({
+            visible: true,
+            title: '✨ Demo Queue Reset',
+            message: 'Ramesh Kumar restored to Pending_GATC queue for the next judge demo.',
+            type: 'success',
+          });
+          setTimeout(() => setSyncToast((prev) => ({ ...prev, visible: false })), 3000);
+        }}
+        onDoubleClick={() => {
+          setIsRameshCertified(false);
+          setSelectedStatus('Pending_GATC');
+        }}
+        className="fixed bottom-0 right-0 w-8 h-8 opacity-0 hover:opacity-10 cursor-default z-50 select-none flex items-center justify-center text-[10px] text-slate-600"
+        title="Secret Demo Reset"
+      >
+        •
+      </div>
 
       {/* ========================================================================= */}
       {/* REVIEW DRAWER / MODAL FOR GATC DIGITAL SIGNING & INSPECTION AUDIT */}
@@ -1323,12 +1540,24 @@ export default function GatcDashboardPage() {
                 )}
 
                 <button
-                  onClick={() => handleDigitallySignAndApprove(selectedReviewShop)}
-                  disabled={isSigning}
+                  onClick={() => {
+                    if (isDemoMode && (selectedReviewShop.shop_name.toLowerCase().includes('ramesh') || selectedReviewShop.license_number.includes('0042'))) {
+                      handleFakeApprove(selectedReviewShop);
+                    } else {
+                      handleDigitallySignAndApprove(selectedReviewShop);
+                    }
+                  }}
+                  disabled={isSigning || approvingStepText !== null}
                   className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  <PenTool className={`w-4 h-4 ${isSigning ? 'animate-spin' : ''}`} />
-                  <span>{isSigning ? 'Computing Signature...' : 'Digitally Sign & Approve'}</span>
+                  <PenTool className={`w-4 h-4 ${isSigning || approvingStepText ? 'animate-spin' : ''}`} />
+                  <span>
+                    {approvingStepText
+                      ? approvingStepText
+                      : isSigning
+                      ? 'Computing Signature...'
+                      : 'Approve / Issue Certificate'}
+                  </span>
                 </button>
               </div>
             </div>
